@@ -6,8 +6,8 @@ import logging
 import os.path
 import sys
 
-from rarbiter.config import ConfigFile
-from rarbiter.interact import PolySwarmd
+from arbiter.config import ConfigFile
+from arbiter.interact import PolySwarmd
 
 CONFIG = b"""
 host: 'localhost:31337'
@@ -20,7 +20,7 @@ artifacts: ~/.samples
 @click.argument("configfile", required=False, type=click.Path(exists=True))
 @click.option("--debug", "-d", is_flag=True)
 def main(configfile, debug):
-    defaultpath = os.path.expanduser("~/.rarbiter.yaml")
+    defaultpath = os.path.expanduser("~/.arbiter.yaml")
     if not configfile and not os.path.exists(defaultpath):
         open(defaultpath, "wb").write(CONFIG.strip() + b"\n")
         sys.exit(

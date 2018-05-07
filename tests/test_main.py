@@ -6,14 +6,14 @@ import os.path
 import random
 import time
 
-from rarbiter.main import main
+from arbiter.main import main
 
 def test_main_none():
-    # Hack attempting to keep the original ~/.rarbiter.yaml file when
+    # Hack attempting to keep the original ~/.arbiter.yaml file when
     # pytest-watch is running under both Python 2 and Python 3 environments.
     time.sleep(random.randint(0, 500) / 1000.0)
 
-    configpath = os.path.expanduser("~/.rarbiter.yaml")
+    configpath = os.path.expanduser("~/.arbiter.yaml")
 
     backup = None
     if os.path.exists(configpath):

@@ -4,12 +4,12 @@
 import setuptools
 
 setuptools.setup(
-    name="rarbiter",
+    name="arbiter",
     version="0.1",
     author="Jurriaan Bremer",
     author_email="jbr@cuckoo.sh",
     packages=[
-        "rarbiter",
+        "arbiter",
     ],
     url="https://cuckoo.sh/",
     license="MIT License",
@@ -18,7 +18,7 @@ setuptools.setup(
     include_package_data=True,
     entry_points={
         "console_scripts": [
-            "rarbiter = rarbiter.main:main",
+            "arbiter = arbiter.main:main",
         ],
     },
     install_requires=[

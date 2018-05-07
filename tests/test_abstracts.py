@@ -1,7 +1,7 @@
 # Copyright (C) 2018 Bremer Computer Security B.V.
 # This file is licensed under the MIT License, see also LICENSE.
 
-from rarbiter.abstracts import (
+from arbiter.abstracts import (
     Bounty, Address, Artifact, EventQueue, Verdict, Assertion
 )
 

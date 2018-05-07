@@ -11,7 +11,7 @@ import threading
 import time
 import websocket
 
-from rarbiter.abstracts import Bounty, Address, EventQueue, Account
+from arbiter.abstracts import Bounty, Address, EventQueue, Account
 
 log = logging.getLogger(__name__)
 

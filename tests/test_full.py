@@ -5,12 +5,12 @@ import json
 import os.path
 import requests
 
-from rarbiter.config import ConfigFile
-from rarbiter.interact import PolySwarmd
+from arbiter.config import ConfigFile
+from arbiter.interact import PolySwarmd
 
 def test_full_run():
     # If no production-ready configuration is available, then we crash hard.
-    filepath = os.path.expanduser("~/.rarbiter.yaml")
+    filepath = os.path.expanduser("~/.arbiter.yaml")
     if not os.path.exists(filepath):
         raise Exception(
             "must have configuration in place for functional tests"
