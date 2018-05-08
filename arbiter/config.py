@@ -25,3 +25,13 @@ class ConfigFile(object):
         return os.path.expanduser(
             self.properties.get("artifacts", "~/.samples")
         )
+
+    @property
+    def dburi(self):
+        return self.properties.get(
+            "dburi", "postgresql://arbiter:arbiter@localhost/arbiter"
+        )
+
+    @property
+    def verdict_sources(self):
+        return self.properties.get("verdict_sources", {})

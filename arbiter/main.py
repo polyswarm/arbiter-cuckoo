@@ -7,6 +7,7 @@ import os.path
 import sys
 
 from arbiter.config import ConfigFile
+from arbiter.database import init_database
 from arbiter.interact import PolySwarmd
 
 CONFIG = b"""
@@ -14,6 +15,7 @@ host: 'localhost:31337'
 addr: '0x0000000000000000000000000000000000000000'
 password: 'password'
 artifacts: ~/.samples
+dburi: 'postgresql://arbiter:arbiter@localhost/arbiter'
 """
 
 @click.command()
@@ -28,10 +30,13 @@ def main(configfile, debug):
             "config to '%s'!" % (configfile or defaultpath, defaultpath)
         )
 
-    logging.basicConfig(level=logging.DEBUG if debug else logging.INFO)
+    logging.basicConfig(format="%(asctime)s %(name)s %(levelname)s: %(message)s",
+                        level=logging.DEBUG if debug else logging.INFO)
     logging.getLogger("urllib3").setLevel(logging.WARNING)
 
     config = ConfigFile(configfile or defaultpath)
+    init_database(config.dburi)
+
     p = PolySwarmd(config)
     p.init()
     p.run()

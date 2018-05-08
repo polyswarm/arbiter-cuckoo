@@ -8,6 +8,8 @@ import os
 import requests
 import six
 
+from arbiter.database import DbArtifact, DbBounty, DbSession
+
 log = logging.getLogger(__name__)
 
 class Account(object):
@@ -45,33 +47,74 @@ class Address(object):
         return self.addr
 
 class Artifact(object):
-    def __init__(self, uri):
+    def __init__(self, parent, config, idx, meta):
+        self.parent = parent
+        log.debug(meta)
+        self.hash = meta['hash']
+        self.filename = meta['name']
+        self.cache_path = os.path.join(config.artifacts, meta['hash'])
+        if not os.path.exists(self.cache_path):
+            log.debug("Fetching ipfs hash: %s %d", self.hash, idx)
+            open(self.cache_path, "wb").write(requests.get(
+                "http://%s/artifacts/%s/%d" % (config.host, self.parent.uri, idx)
+            ).content)
+
+        s = DbSession()
+        r = s.query(DbArtifact.id).filter_by(artifact_hash=self.hash).first()
+        if r is None:
+            db_bounty = s.query(DbBounty).filter_by(guid=self.parent.bounty_guid).first()
+
+            db_artifact = DbArtifact(
+                bounty_id=db_bounty.id,
+                artifact_hash=self.hash,
+                artifact_path=self.cache_path,
+                artifact_filename=self.filename
+            )
+            s.add(db_artifact)
+            s.commit()
+            self.id = db_artifact.id
+        else:
+            self.id = r[0]
+
+        s.close()
+
+    def fetch(self):
+        return open(self.cache_path, "rb").read()
+
+class ArtifactCollection(object):
+    def __init__(self, bounty_guid, uri):
         self.uri = uri
+        self.artifacts = []
+        self.bounty_guid = bounty_guid
 
     def fetch(self, config):
         cache_path = os.path.join(config.artifacts, self.uri)
         if not os.path.exists(cache_path):
             log.debug("Fetching ipfs listing: %s", self.uri)
-            r = requests.get(
-                "http://%s/artifacts/%s" % (config.host, self.uri)
-            )
+
+            try:
+                r = requests.get(
+                    "http://%s/artifacts/%s" % (config.host, self.uri),
+                    timeout=4
+                )
+            except requests.exceptions.Timeout:
+                return
 
             cache_path = os.path.join(config.artifacts, self.uri)
             open(cache_path, "wb").write(json.dumps(r.json()))
 
-        manifest = json.loads(open(cache_path, "rb").read().decode())
-        for idx, value in enumerate(manifest.get("result", [])):
-            cache_path = os.path.join(config.artifacts, value)
-            if not os.path.exists(cache_path):
-                log.debug("Fetching ipfs hash: %s %d", self.uri, idx)
-                open(cache_path, "wb").write(requests.get(
-                    "http://%s/artifacts/%s/%d" % (config.host, self.uri, idx)
-                ).content)
+        try:
+            manifest = json.loads(open(cache_path, "rb").read().decode())
+        except ValueError:
+            return
 
-            yield open(cache_path, "rb").read()
+        for idx, value in enumerate(manifest.get("result", [])):
+            artifact = Artifact(self, config, idx, value)
+            self.artifacts.append(artifact)
+            yield artifact.fetch()
 
     def __cmp__(self, other):
-        if isinstance(other, Artifact):
+        if isinstance(other, ArtifactCollection):
             other = other.uri
         return self.uri != other
 
@@ -157,7 +200,7 @@ class Bounty(object):
             expiration=int(d["expiration"]),
             guid=d["guid"],
             resolved=d.get("resolved"),
-            uri=Artifact(d["uri"]),
+            uri=ArtifactCollection(d["guid"], d["uri"]),
             verdicts=d.get("verdicts"),
         )
 
@@ -170,12 +213,8 @@ class Bounty(object):
             yield Assertion.from_dict(entry)
 
     def settle(self, host, verdicts):
-        r = requests.post(
-            "http://%s/bounties/%s/settle" % (host, self.guid), json={
-                "verdicts": verdicts,
-            }
-        )
-        r.raise_for_status()
+        bounty_verdict = BountyVerdict(self.guid)
+        return bounty_verdict.settle(host, verdicts)
 
     def __cmp__(self, other):
         return not (
@@ -191,6 +230,18 @@ class Bounty(object):
 
     def __eq__(self, other):
         return not self.__cmp__(other)
+
+class BountyVerdict(object):
+    def __init__(self, guid):
+        self.guid = guid
+
+    def settle(self, host, verdicts):
+        r = requests.post(
+            "http://%s/bounties/%s/settle" % (host, self.guid), json={
+                "verdicts": verdicts,
+            }
+        )
+        r.raise_for_status()
 
 class EventQueue(object):
     def __init__(self):
@@ -234,6 +285,17 @@ class EventQueue(object):
 
         if bounty.resolved is False:
             self.expiration[bounty.expiration].append(bounty)
+
+        s = DbSession()
+        r = s.query(DbBounty).filter_by(guid=bounty.guid).first()
+        if r is None:
+            r = DbBounty(
+                guid=bounty.guid, expiration=bounty.expiration, settled=0
+            )
+            s.add(r)
+            s.commit()
+
+        s.close()
 
         self.bounties[bounty.guid] = bounty
         return bounty
