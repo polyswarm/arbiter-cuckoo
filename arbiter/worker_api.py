@@ -1,45 +1,91 @@
 # Copyright (C) 2018 Bremer Computer Security B.V.
 # This file is licensed under the MIT License, see also LICENSE.
 
+# API used by frontend, analysis backends
+
 import functools
+import os.path
+import time
+import math
+import random
 
 from flask import Flask, jsonify, request, abort
 from sqlalchemy import and_
 from sqlalchemy.sql import exists
 
-from arbiter.database import DbSession, DbVerdict, DbArtifact
-from arbiter.sources import verdict_sources
+from arbiter.backends import analysis_backends
+from arbiter.const import JOB_STATUS_DONE
+from arbiter.component import WSGIComponent
+from arbiter.database import DbSession, DbArtifact, DbArtifactVerdict
+from arbiter.events import dispatch_event
+from arbiter.dashboard import dashboard_ws
 
 app = Flask(__name__)
+
+dashboard_path = os.path.join(os.getcwd(), "dashboard/dist")
+
+class APIComponent(WSGIComponent):
+    name = "api"
+    bind = ":9080"
+    ws = {"/kraken/tentacle": dashboard_ws}
+    app = app
+
+    def __init__(self, parent):
+        self.polyswarm = parent.polyswarm
 
 def check_apikey(view):
     @functools.wraps(view)
     def hook(*args, **kwargs):
-        # TODO: embed verdict source name in API key for lookup purposes
-        if not request.headers.get('X-Api-Key'):
-            abort(401)
+        # TODO: embed analysis backend name in API key for lookup purposes
+        # TODO: use bearer token
+        api_key = request.headers.get("Authorization")
+        if not api_key or not api_key.lower().startswith("bearer "):
+            abort(401, "The Authorization header is required")
 
-        x_api_key = request.headers.get('X-Api-Key')
-        for verdict_source in verdict_sources.values():
-            if verdict_source.check_api_key(x_api_key):
+        token = api_key[7:]
+        for backend in analysis_backends.values():
+            if backend.check_api_key(token):
                 break
         else:
             abort(401, "Invalid API key specified")
 
-        return view(*args, verdict_source=verdict_source, **kwargs)
+        return view(*args, analysis_backend=backend, **kwargs)
 
     return hook
 
-@app.route("/artifacts", methods=['GET'])
+@app.after_request
+def apply_caching(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    return response
+
+@app.route("/dashboard/charts/artifacts")
+def artifact_datapoints():
+    N = 100
+    now = time.time()
+    start = time.time() - (5*3600*24)
+    step = (now - start) / float(N - 1)
+    data = []
+    while len(data) < N:
+        i = len(data)
+        v = int(40 + 20 * math.sin(0.4 * i + 0.05 * random.random()))
+        data.append([int(start + i * step), v])
+
+    return jsonify({
+        "start": int(start),
+        "end": int(now),
+        "data": data,
+    })
+
+@app.route("/artifacts", methods=["GET"])
 @check_apikey
-def list_artifacts(verdict_source):
+def list_artifacts(analysis_backend):
     s = DbSession()
     artifacts = []
 
     q = s.query(DbArtifact).filter(
         ~exists().where(and_(
-            DbVerdict.artifact_id == DbArtifact.id,
-            DbVerdict.verdict_source == verdict_source.name
+            DbArtifactVerdict.artifact_id == DbArtifact.id,
+            DbArtifactVerdict.backend == analysis_backend.name
         ))
     )
 
@@ -52,40 +98,59 @@ def list_artifacts(verdict_source):
 
 @app.route("/artifact/<int:artifact_id>", methods=["POST"])
 @check_apikey
-def action_artifact(verdict_source, artifact_id):
+def action_artifact(analysis_backend, artifact_id):
     if not isinstance(request.json, dict):
-        abort(500, "No JSON POST body found")
+        abort(400, "No JSON POST body found")
 
-    if "verdict_value" not in request.json.keys():
-        abort(500, "Missing verdict_value")
+    if "error" in request.json:
+        pass
+
+    if "verdict_value" not in request.json:
+        abort(400, "Missing verdict_value")
 
     verdict_value = request.json["verdict_value"]
+    if verdict_value is not None:
+        verdict_value = int(verdict_value)
+        if verdict_value < 0 or verdict_value > 100:
+            abort(400, "Invalid verdict value")
 
     s = DbSession()
+    verdict = s.query(DbArtifactVerdict).enable_eagerloads(False) \
+        .with_for_update().filter(and_(
+            DbArtifactVerdict.backend == analysis_backend.name,
+            DbArtifactVerdict.artifact_id == artifact_id
+        )).first()
 
-    q = s.query(DbArtifact).filter_by(id = artifact_id)
-
-    if q.count() != 1:
+    if not verdict:
         s.close()
-        abort(404, "Artifact #%d not found" % (artifact_id))
+        abort(404, "Artifact #%d not found" % artifact_id)
 
-    q = s.query(DbVerdict).filter(and_(
-            DbVerdict.verdict_source == verdict_source.name,
-            DbVerdict.artifact_id == artifact_id
-        ))
-
-    if q.count() > 0:
+    if verdict.status == JOB_STATUS_DONE:
         s.close()
-        abort(500, "Verdict for this artifact already submitted")
+        abort(403, "Verdict for artifact #%s already submitted" % artifact_id)
 
-    db_verdict = DbVerdict(
-        verdict_source=verdict_source.name,
-        verdict_value=verdict_value,
-        artifact_id=artifact_id
-    )
-
-    s.add(db_verdict)
+    verdict.status = JOB_STATUS_DONE
+    verdict.verdict = verdict_value
+    s.add(verdict)
     s.commit()
     s.close()
 
+    app.logger.info("Received verdict for artifact #%s from %s", artifact_id,
+                    analysis_backend.name)
+    dispatch_event("verdict_update", (artifact_id,))
+
     return jsonify({"status": "OK"})
+
+@app.route("/api/task", methods=["POST"])
+def cuckoo_hack_test():
+    return jsonify({"success": "OK", "task_ids": None})
+
+@app.route("/hack/<int:block>")
+def block_hack_test(block):
+    dispatch_event("block", (block,))
+    return "Dispatched event\n"
+
+@app.route("/cli/check_settle")
+def cli_check_settle():
+    dispatch_event("check_settle")
+    return "OK\n"

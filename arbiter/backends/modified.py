@@ -3,9 +3,9 @@
 
 import requests
 
-from arbiter.sources import VerdictSource
+from arbiter.backends import AnalysisBackend
 
-class Modified(VerdictSource):
+class Modified(AnalysisBackend):
     def configure(self, config):
         url = config['url']
         if not url.endswith('/'):
@@ -17,11 +17,12 @@ class Modified(VerdictSource):
         body = {}
         if self.options:
             body["options"] = self.options
-        body["custom"] = artifact.id
-        files = {"file": (artifact.filename, artifact.fetch())}
-        req = requests.post(self.cuckoo_url + 'v1/tasks/create/file',
+        body["custom"] = artifact.url
+        files = {"file": (artifact.name, artifact.fetch())}
+        req = requests.post(self.cuckoo_url + "v1/tasks/create/file",
                             data=body, files=files)
         req.raise_for_status()
-
-        # resp = req.json()
-        # resp["task_ids"] ...
+        resp = req.json()
+        if "task_id" not in resp:
+            raise ValueError(resp)
+        return {"task_id": resp["task_id"]}
