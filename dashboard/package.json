@@ -1,0 +1,47 @@
+{
+  "name": "wcmp",
+  "version": "1.0.2",
+  "description": "A utility wrapper for handling sass and babel for the web.",
+  "main": "index.js",
+  "scripts": {
+    "dev": "nodemon --delay 2 --exec babel-node index.js --development --force-babel",
+    "start": "babel-node index.js",
+    "build": "babel-node index.js --build",
+    "scripts": "babel-node index.js --scripts",
+    "styles": "babel-node index.js --styles",
+    "compile": "rimraf tooling/build && babel tooling --out-dir tooling/build",
+    "test": "node tests"
+  },
+  "author": "Koen Houtman",
+  "license": "MIT",
+  "devDependencies": {
+    "any-json": "3.1.0",
+    "ascii-art": "1.4.2",
+    "babel-cli": "6.26.0",
+    "babel-plugin-transform-custom-element-classes": "0.1.0",
+    "babel-polyfill": "6.26.0",
+    "babel-preset-env": "1.6.1",
+    "babel-register": "6.26.0",
+    "babelify": "8.0.0",
+    "browserify": "14.5.0",
+    "chalk": "2.3.0",
+    "chokidar": "1.7.0",
+    "deep-extend": "0.5.0",
+    "exorcist": "1.0.0",
+    "json-to-sass-map": "1.0.1",
+    "minimist": "1.2.0",
+    "node-sass": "4.9.0",
+    "nodemon": "1.17.1",
+    "rimraf": "2.6.2",
+    "yamljs": "0.3.0"
+  },
+  "dependencies": {
+    "@fengyuanchen/datepicker": "0.6.5",
+    "chart.js": "2.7.2",
+    "handlebars": "^4.0.11",
+    "jquery": "3.3.1",
+    "moment": "2.22.1",
+    "patternomaly": "^1.3.0",
+    "typeface-rubik": "0.0.54"
+  }
+}

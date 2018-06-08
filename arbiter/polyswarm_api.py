@@ -1,7 +1,7 @@
 # Copyright (C) 2018 Bremer Computer Security B.V.
 # This file is licensed under the MIT License, see also LICENSE.
 
-from requests import get, post
+import requests
 import six
 
 class PolySwarmError(Exception):
@@ -20,24 +20,24 @@ class PolySwarmAPI:
         self.password = password
 
     def account_unlock(self):
-        return self(post, "accounts/%s/unlock" % self.account,
+        return self(requests.post, "accounts/%s/unlock" % self.account,
                     {"password": self.password})
 
     def balance(self, kind, account=None):
         if not account:
             account = self.account
-        return self(get, "accounts/%s/balance/%s" % (account, kind))
+        return self(requests.get, "accounts/%s/balance/%s" % (account, kind))
 
     def pending_bounties(self):
-        b = self(get, "bounties/pending")
-        b.extend(self(get, "bounties/active"))
+        b = self(requests.get, "bounties/pending")
+        b.extend(self(requests.get, "bounties/active"))
         return b
 
     def bounty_assertions(self, guid):
-        return self(get, "bounties/%s/assertions" % guid)
+        return self(requests.get, "bounties/%s/assertions" % guid)
 
     def settle_bounty(self, guid, verdicts):
-        return self(post, "bounties/%s/settle" % guid, {"verdicts": verdicts})
+        return self(requests.post, "bounties/%s/settle" % guid, {"verdicts": verdicts})
 
     def __call__(self, method, path, args=None):
         resp = method("http://%s/%s" % (self.host, path), json=args)

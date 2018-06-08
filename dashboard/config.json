@@ -1,0 +1,33 @@
+{
+  "babel": {
+    "path": "src/scripts",
+    "file": "index.es6",
+    "output": "dist/scripts/main.js",
+    "browserify": {
+      "debug": true
+    },
+    "babel": {
+      "plugins": [
+        "transform-custom-element-classes",
+        "transform-es2015-classes"
+      ],
+      "presets": ["env"],
+      "extensions": [".es6"],
+      "sourceMaps": true,
+      "compact": true
+    }
+  },
+  "sass": {
+    "path": "src/styles",
+    "file": "main.scss",
+    "output": "dist/css/styles.css",
+    "sass": {
+      "sourceMap": true,
+      "sourceMapContents": true,
+      "style": "compact",
+      "includePaths": [
+        "node_modules"
+      ]
+    }
+  }
+}

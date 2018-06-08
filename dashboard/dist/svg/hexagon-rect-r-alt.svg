@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="24px" height="67px" viewBox="0 0 24 67" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <g class="hexagon-corner" transform="translate(-326.000000, -302.000000)" fill="#D8D8D8" stroke="#979797">
+    <path d="M332.806028,306.215821 C331.602851,304.229578 329.392363,303 327,303 L327,367.856886 C329.392363,367.856886 331.602851,366.627307 332.806028,364.641065 L348.475309,338.698311 C349.692477,336.685045 349.692477,334.185353 348.475309,332.158575 L332.806028,306.215821 Z" id="Shape"></path>
+  </g>
+</svg>

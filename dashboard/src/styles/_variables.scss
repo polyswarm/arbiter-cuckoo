@@ -1,0 +1,21 @@
+// shorthand extendable for quick-aligning elements in a flex context
+%flex-distribute {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+// text field reset
+%reset-text-field {
+  -webkit-appearance: none;
+  display: block;
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  &:focus { outline: none; }
+}
+
+// font awesome font path directive
+$fa-font-path: "../fonts/fontawesome";
+$rubik-font-path: "../fonts/rubik";

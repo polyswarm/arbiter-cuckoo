@@ -1,27 +1,27 @@
 # Copyright (C) 2018 Bremer Computer Security B.V.
 # This file is licensed under the MIT License, see also LICENSE.
 
-# API used by frontend, analysis backends
+# API used by frontend and analysis backends.
 
 import functools
-import os.path
-import time
 import math
+import os.path
 import random
+import time
 
-from flask import Flask, jsonify, request, abort
+from flask import Flask, jsonify, request, abort, redirect, send_from_directory
+
 from sqlalchemy import and_
 from sqlalchemy.sql import exists
 
 from arbiter.backends import analysis_backends
-from arbiter.const import JOB_STATUS_DONE
 from arbiter.component import WSGIComponent
+from arbiter.const import JOB_STATUS_DONE
+from arbiter.dashboard import dashboard_ws
 from arbiter.database import DbSession, DbArtifact, DbArtifactVerdict
 from arbiter.events import dispatch_event
-from arbiter.dashboard import dashboard_ws
 
 app = Flask(__name__)
-
 dashboard_path = os.path.join(os.getcwd(), "dashboard/dist")
 
 class APIComponent(WSGIComponent):
@@ -55,6 +55,7 @@ def check_apikey(view):
 
 @app.after_request
 def apply_caching(response):
+    # For dashboard; TODO - set to something sane
     response.headers["Access-Control-Allow-Origin"] = "*"
     return response
 
@@ -75,6 +76,18 @@ def artifact_datapoints():
         "end": int(now),
         "data": data,
     })
+
+@app.route("/", methods=['GET'])
+def index():
+    return redirect("/dashboard/")
+
+@app.route("/dashboard/", methods=['GET'])
+def dashboard_index():
+    return send_from_directory(dashboard_path, "index.html")
+
+@app.route("/dashboard/<path:static_path>", methods=['GET'])
+def dashboard_files(static_path):
+    return send_from_directory(dashboard_path, static_path)
 
 @app.route("/artifacts", methods=["GET"])
 @check_apikey
@@ -115,7 +128,7 @@ def action_artifact(analysis_backend, artifact_id):
             abort(400, "Invalid verdict value")
 
     s = DbSession()
-    verdict = s.query(DbArtifactVerdict).enable_eagerloads(False) \
+    verdict = s.query(DbArtifactVerdict) \
         .with_for_update().filter(and_(
             DbArtifactVerdict.backend == analysis_backend.name,
             DbArtifactVerdict.artifact_id == artifact_id
@@ -141,9 +154,10 @@ def action_artifact(analysis_backend, artifact_id):
 
     return jsonify({"status": "OK"})
 
-@app.route("/api/task", methods=["POST"])
+# Debug helpers {{{
+@app.route("/tasks/create/file", methods=["POST"])
 def cuckoo_hack_test():
-    return jsonify({"success": "OK", "task_ids": None})
+    return jsonify({"success": "OK", "task_id": 123})
 
 @app.route("/hack/<int:block>")
 def block_hack_test(block):
@@ -154,3 +168,8 @@ def block_hack_test(block):
 def cli_check_settle():
     dispatch_event("check_settle")
     return "OK\n"
+# }}}
+
+if __name__ == "__main__":
+    # For dashboard
+    app.run()

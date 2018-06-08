@@ -23,6 +23,6 @@ class Modified(AnalysisBackend):
                             data=body, files=files)
         req.raise_for_status()
         resp = req.json()
-        if "task_id" not in resp:
+        if "task_ids" not in resp:
             raise ValueError(resp)
-        return {"task_id": resp["task_id"]}
+        return {"task_ids": resp["task_ids"]}

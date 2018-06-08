@@ -14,19 +14,24 @@ setuptools.setup(
     url="https://cuckoo.sh/",
     license="MIT License",
     description="PolySwarm Arbiter backend",
-    long_description="PolySwarm Arbiter backend framework",
+    long_description=open("README.rst", "rb").read().decode(),
     include_package_data=True,
     entry_points={
         "console_scripts": [
-            "arbiter = arbiter.main:main",
+            "arbiter = arbiter.main:cli",
         ],
     },
     install_requires=[
         "click==6.6",
+        "flask==1.0.2",
         "future==0.16.0",
+        "psycopg2-binary",
         "pyyaml==3.12",
         "requests>=2.13.0",
+        "gevent>=1.3",
+        "gevent-websocket>=0.10",
         "six==1.11.0",
-        "websocket-client==0.47.0",
+        "sqlalchemy",
+        "ws4py>=0.5",
     ],
 )

@@ -13,15 +13,16 @@ from arbiter.database import DbSession, DbBounty, DbArtifact, DbArtifactVerdict
 from arbiter.events import event, dispatch_event, periodic
 from arbiter.ipfs import ipfs_json, ipfs_download, IPFSNotFoundError
 from arbiter.polyswarm_api import Bounty, PolySwarmError
+from arbiter.utils import verdict_show
 
 log = logging.getLogger(__name__)
 
 def bounty_settle_manual(guid, verdicts):
     s = DbSession()
-    bounty = s.query(DbBounty).enable_eagerloads(False).with_for_update() \
-        .filter_by(guid=guid).first()
+    bounty = s.query(DbBounty).with_for_update().filter_by(guid=guid).first()
 
     if not bounty:
+        s.close()
         raise KeyError("No such bounty")
     elif bounty.truth_settled:
         s.close()
@@ -38,7 +39,6 @@ def bounty_settle_manual(guid, verdicts):
     s.add(bounty)
     s.commit()
     s.close()
-    #dispatch_event("check_settle")
 
 class BountyComponent(Component):
     """Keep track of bounties"""
@@ -47,13 +47,6 @@ class BountyComponent(Component):
         self.expires = parent.config.expires
         self.cur_block = None
         self.pending_bounties = set()
-
-    @periodic(minutes=1)
-    def log_pending_bounties(self):
-        s = DbSession()
-        bounties = s.query(DbBounty.id).filter_by(truth_settled=False).count()
-        s.close()
-        log.info("Pending bounties: %s", bounties)
 
     @event("check_settle")
     def check_settle(self):
@@ -85,29 +78,34 @@ class BountyComponent(Component):
 
     @event("settle_bounty_attempt", serialize=False)
     def settle_bounty_attempt(self, guid, value):
+        result = False
         try:
             log.info("%s | Settle bounty value: %s", guid, verdict_show(value))
             self.polyswarm.settle_bounty(guid, value)
+            result = True
 
-            s = DbSession()
-            bounty = s.query(DbBounty).enable_eagerloads(False).with_for_update() \
-                .filter_by(guid=guid).one()
-            bounty.truth_settled = True
-            s.add(bounty)
-            s.commit()
-            s.close()
         except PolySwarmError as e:
             if e.status == 404:
-                # Permanent failure
-                log.warning("Bounty no longer exists (double submit?)")
+                # Record permanent failure: TODO: log an error, mark bounty
+                log.error("Bounty no longer exists (double submit?)")
+                result = True
             else:
                 log.exception("API error")
-            return
+                return
         except:
             log.exception("Failed to settle bounty")
             return
         finally:
             self.pending_bounties.discard(guid)
+
+        if result:
+            s = DbSession()
+            bounty = s.query(DbBounty).with_for_update() \
+                .filter_by(guid=guid).one()
+            bounty.truth_settled = True
+            s.add(bounty)
+            s.commit()
+            s.close()
 
         try:
             assertions = self.polyswarm.bounty_assertions(guid)
@@ -229,7 +227,7 @@ class BountyComponent(Component):
         """Check if bounty can be settled after artifact update"""
 
         s = DbSession()
-        bounty = s.query(DbBounty).enable_eagerloads(False).with_for_update() \
+        bounty = s.query(DbBounty).with_for_update() \
             .filter_by(id=bounty_id).one()
         if bounty.truth_value is not None:
             log.debug("%s | Bounty was already settled, nothing to do",
@@ -265,6 +263,3 @@ def fix_bitlist(lst, n):
     while len(lst) < n:
         lst.append(False)
     return lst[:n]
-
-def verdict_show(values):
-    return "".join(str(v)[:1].upper() for v in values)

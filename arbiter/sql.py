@@ -4,6 +4,7 @@
 
 import json
 import uuid
+
 from sqlalchemy.types import TypeDecorator, CHAR, String
 from sqlalchemy.dialects.postgresql import UUID as PsqlUUID
 

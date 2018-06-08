@@ -2,10 +2,12 @@
 # This file is licensed under the MIT License, see also LICENSE.
 
 import datetime
+
 from sqlalchemy import create_engine, Column, ForeignKey
 from sqlalchemy import Index, Integer, String, DateTime, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, backref, relationship
+
 from arbiter.sql import JsonString, UUID
 
 Base = declarative_base()
@@ -36,7 +38,7 @@ class DbBounty(Base):
     settle_block = Column(Integer, nullable=False)
 
     artifacts = relationship("DbArtifact",
-                             backref=backref("bounty", lazy="joined"))
+                             backref=backref("bounty", lazy="noload"))
 
 # Is-settled and current-block check
 Index('ix_bounty_settle', DbBounty.truth_settled, DbBounty.settle_block)
@@ -47,21 +49,23 @@ class DbArtifact(Base):
 
     id = Column(Integer, primary_key=True)
     bounty_id = Column(Integer,
-                       ForeignKey("bounties.id"),
+                       ForeignKey("bounties.id", ondelete="cascade"),
                        nullable=False)
     hash = Column(String(255))
     name = Column(String(255))
     verdict = Column(Integer, nullable=True)
 
     verdicts = relationship("DbArtifactVerdict",
-                            backref=backref("artifact", lazy="joined"))
+                            backref=backref("artifact", lazy="noload"))
 
 class DbArtifactVerdict(Base):
     """The verdict as given by an analysis source for an artifact"""
     __tablename__ = "artifact_verdicts"
 
     id = Column(Integer, primary_key=True)
-    artifact_id = Column(Integer, ForeignKey("artifacts.id"), nullable=False,
+    artifact_id = Column(Integer,
+                         ForeignKey("artifacts.id", ondelete="cascade"),
+                         nullable=False,
                          index=True)
     backend = Column(String(32), nullable=False)
     # Unique: (artifact_id, backend)

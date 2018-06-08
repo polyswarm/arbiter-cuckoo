@@ -1,0 +1,133 @@
+/*
+  Tables should be markupped, not styled. These tables are 'html-first' implemented,
+  example:
+
+  // very ugly and un-cool, and old, and [..fill in..]
+  <tr>
+    <td style="font-family: monospace; color: red">Tables are 1337 h4ckz</td>
+  </tr>
+
+  // this gets you girls while you write tables:
+  <tr>
+    <td data-align-center data-monospace>Wow, even back-end developers would write this.</td>
+  </tr>
+
+  // if the list grows and becomes unreadable, this IS allowed :)
+  <td
+    data-align-center
+    data-monospace
+    data-property
+    data-another-property
+  >Content</td>
+
+  // Index of layout properties (like above example, goes for any <td> and <th>):
+
+  `data-align-[center|right]` => HTML5 banned <td align="...">, this is my workaround
+  `data-valign-[top|middle|bottom]` => Same as above for vertical-align
+  `data-monospace`            => Makes inner text monospaced
+
+ */
+
+$table-row-background: #F5F5F5;
+$table-border: shade(#BFB2C9, 5%);
+$table-odd: #BFB2C9;
+$table-even: #E0D9E6;
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+
+  th,
+  td {
+    text-align: left;
+    vertical-align: middle;
+    border: 1px solid $table-border;
+
+    // some variative styles to
+    &[data-align-center] { text-align: center; }
+    &[data-align-right] { text-align: right; }
+    &[data-valign-top] { vertical-align: top; }
+    &[data-valign-bottom] { vertical-align: bottom; }
+    &[data-monospace] { font-family: monospace; }
+  }
+
+  thead {
+
+    tr {
+      background-color: $table-row-background;
+    }
+
+    th {
+      vertical-align: bottom;
+      font-size: 14px;
+      font-weight: 500;
+      padding: 20px 20px 5px 20px;
+      white-space: nowrap;
+      background-color: #FFF;
+
+      .fa { float: right; }
+    }
+
+    // table header variety
+    tr.table-header {
+      background-color: #fff;
+
+      th {
+        padding-bottom: 15px;
+        &:first-child { border-top-left-radius: 8px; }
+        &:last-child { border-top-right-radius: 8px; }
+      }
+    }
+
+  }
+
+  tbody {
+    tr {
+      &:nth-child(odd) {
+        background-color: $table-odd;
+        &:hover {
+          background-color: shade($table-odd, 5%);
+        }
+      }
+      &:nth-child(even) {
+        background-color: $table-even;
+        &:hover {
+          background-color: shade($table-even, 10%);
+          td { border-color: shade($table-border, 5%); }
+        }
+      }
+    }
+
+    td {
+      font-size: 13px;
+      padding: 15px 20px;
+      &:hover { background-color: rgba(0,0,0,.05); }
+    }
+
+  }
+
+  tfoot {
+    td { padding: 15px 20px; }
+  }
+
+  // utility class for presenting directly in a padding-less environment
+  // removes all surrounding borders to make it fit within.
+  &.content-fit {
+
+    tr {
+     & > th,
+     & > td {
+       &:first-child { border-left-width: 0; }
+       &:last-child { border-right-width: 0; }
+     }
+     &:first-child > th,
+     &:first-child > td, { border-top-width: 0; }
+    }
+
+    tr:last-child > td { border-bottom-width: 0; }
+
+    tfoot > tr { border-top: 1px solid color(table, border); }
+
+  }
+
+}

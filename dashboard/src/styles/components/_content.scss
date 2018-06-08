@@ -1,0 +1,91 @@
+.content {
+
+  display: flex;
+  flex-direction: column;
+
+  header {
+    flex-basis: 30px;
+    overflow: hidden;
+    flex-shrink: 0;
+    flex-grow: 0;
+
+    padding: 0 20px;
+    transition: flex-basis 150ms ease-out;
+
+    &,
+    & > div {
+      @extend %flex-distribute;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 500;
+      color: #3F106B;
+    }
+
+    .filters {
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 150ms ease-out;
+    }
+
+    p {
+      color: #C5C3C8;
+      font-size: .8em;
+      font-weight: 500;
+      text-transform: uppercase;
+    }
+
+  }
+
+  section {
+    flex-basis: 100%;
+    background-color: #fff;
+    border-top: 1px solid #D2D2D2;
+  }
+
+  .loading-component {
+    display: none;
+    align-self: center;
+    align-items: center;
+    margin: auto;
+
+    i {
+      @extend .fal;
+      font-size: 30px;
+      transition: font-size 100ms ease-in-out;
+      min-width: 40px;
+      text-align: center;
+      color: #8500FF;
+      &:before { content: fa-content($fa-var-hexagon); }
+      &.filled {
+        @extend .fas;
+        font-size: 35px;
+      }
+    }
+
+  }
+
+  &.content-focus {
+
+    header {
+      flex-basis: 40px;
+
+      .filters {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+    }
+
+  }
+
+  &.content-loading {
+    .loading-component {
+      display: flex;
+    }
+    section { display: none; }
+  }
+
+}

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="74px" height="65px" viewBox="0 0 74 65" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <g class="Hexagon" fill="#8500FF" fill-rule="nonzero">
+    <path d="M57.7986529,3.22291667 C56.6305231,1.23229167 54.4844243,0 52.1617477,0 L21.7360424,0 C19.4133658,0 17.2672669,1.23229167 16.0991371,3.22291667 L0.886284496,29.2229167 C-0.295428165,31.240625 -0.295428165,33.7458333 0.886284496,35.7770833 L16.0991371,61.7770833 C17.2672669,63.7677083 19.4133658,65 21.7360424,65 L52.1617477,65 C54.4844243,65 56.6305231,63.7677083 57.7986529,61.7770833 L73.0115056,35.7770833 C74.1932182,33.759375 74.1932182,31.2541667 73.0115056,29.2229167 L57.7986529,3.22291667 Z"></path>
+    <text
+      font-family="Rubik-Regular, Rubik"
+      font-size="30"
+      font-weight="normal"
+      letter-spacing="8.149071e-10"
+      fill="#FFFFFF"
+      baseline-alignment="middle"
+      text-anchor="middle"
+      transform="translate(0,10)"
+      >
+      <tspan class="text-content" x="50%" y="50%" >0</tspan>
+    </text>
+  </g>
+</svg>

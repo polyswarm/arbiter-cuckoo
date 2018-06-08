@@ -15,16 +15,16 @@ import datetime
 import gevent
 import logging
 
-from arbiter.component import Component
+from arbiter.artifacts import Artifact
 from arbiter.backends import analysis_backends
+from arbiter.component import Component
 from arbiter.const import (
     JOB_STATUS_DONE, JOB_STATUS_NEW, JOB_STATUS_SUBMITTING,
     JOB_STATUS_PENDING, JOB_STATUS_FAILED, VERDICT_DONTKNOW,
     VERDICT_SAFE, VERDICT_MAYBE, VERDICT_MALICIOUS
 )
-from arbiter.artifacts import Artifact
-from arbiter.events import periodic, event, dispatch_event
 from arbiter.database import DbSession, DbArtifact, DbArtifactVerdict
+from arbiter.events import periodic, event, dispatch_event
 
 log = logging.getLogger(__name__)
 
@@ -43,8 +43,14 @@ def vote_on_artifact(voters):
     total_votes = 0
     total_voters = 0
 
+    log.debug("%r %r", analysis_backends.keys(),
+              voters.keys())
+
+    # TODO: not sensible when high-confidence voters all vote safe,
+    # or broken when there are no low-confidence voters
     for a in analysis_backends.values():
         vote = voters.get(a.name)
+        log.debug("%r %r", a.name, vote)
         if not a.trusted:
             # This will be messy
             total_weight += a.weight * VERDICT_MALICIOUS
@@ -86,8 +92,7 @@ class VerdictComponent(Component):
         notify_tasks = []
         now = datetime.datetime.utcnow()
         s = DbSession()
-        avs = s.query(DbArtifactVerdict).enable_eagerloads(False) \
-            .with_for_update() \
+        avs = s.query(DbArtifactVerdict).with_for_update() \
             .filter_by(status=JOB_STATUS_PENDING) \
             .filter(DbArtifactVerdict.expires < now)
         for av in avs:
@@ -116,7 +121,6 @@ class VerdictComponent(Component):
         for a in avs:
             dispatch_event("verdict_jobs", (None, a,))
 
-
     @event("verdict_update")
     def verdict_update(self, artifact_id):
         """Recompute final verdict for an artifact and trigger bounty settle if
@@ -128,8 +132,8 @@ class VerdictComponent(Component):
 
         s = DbSession()
 
-        artifact = s.query(DbArtifact).enable_eagerloads(False) \
-            .with_for_update().filter_by(id=artifact_id).one()
+        artifact = s.query(DbArtifact).with_for_update() \
+            .filter_by(id=artifact_id).one()
         verdicts = s.query(DbArtifactVerdict).filter_by(artifact_id=artifact_id)
         bounty_id = artifact.bounty_id
         incomplete = False
@@ -167,12 +171,10 @@ class VerdictComponent(Component):
 
         # Find jobs we need to submit, and mark them
         s = DbSession()
-        a = s.query(DbArtifact).enable_eagerloads(False) \
-            .filter_by(id=artifact_id).one()
+        a = s.query(DbArtifact).filter_by(id=artifact_id).one()
         artifact = Artifact(a.id, a.name, a.hash,
                             "%s/artifact/%s" % (self.url, a.id))
-        avs = s.query(DbArtifactVerdict).enable_eagerloads(False) \
-            .with_for_update() \
+        avs = s.query(DbArtifactVerdict).with_for_update() \
             .filter_by(artifact_id=artifact.id, status=JOB_STATUS_NEW)
 
         for av in avs.all():
@@ -204,6 +206,8 @@ class VerdictComponent(Component):
                     task = gevent.spawn(a.submit_artifact, artifact)
                     task_ids[id(task)] = av_id
                     tasks.append(task)
+                else:
+                    log.warning("%r", backend)
 
             # Collect results
             gevent.joinall(tasks)

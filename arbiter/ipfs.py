@@ -1,10 +1,10 @@
 # Copyright (C) 2018 Bremer Computer Security B.V.
 # This file is licensed under the MIT License, see also LICENSE.
 
+import json
+import logging
 import os.path
 import requests
-import logging
-import json
 
 from arbiter.utils import AtomicWrite
 

@@ -12,9 +12,9 @@ import os.path
 import sys
 import yaml
 
+from arbiter.arbiterd import Arbiterd
 from arbiter.config import ConfigFile
 from arbiter.database import init_database
-from arbiter.arbiterd import Arbiterd
 
 default_conf_path = os.path.expanduser("~/.arbiter.yaml")
 

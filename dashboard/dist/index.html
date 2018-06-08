@@ -1,0 +1,149 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/png" href="images/favicon-16x16.png" sizes="16x16" />
+    <link rel="icon" type="image/png" href="images/favicon-32x32.png" sizes="32x32" />
+    <link rel="icon" type="image/png" href="images/favicon-96x96.png" sizes="96x96" />
+    <link rel="stylesheet" type="text/css" href="css/styles.css" />
+    <title>Cuckoo for Polyswarm System Monitor</title>
+  </head>
+  <body>
+
+    <main class="app">
+
+      <!-- Application header -->
+      <header class="app-header">
+        <div>
+          <a class="logo" href="/" title="Toggle currency">
+            <img src="svg/polyswarm-white.svg" alt="Polyswarm" />
+          </a>
+          <div class="right">
+            <!-- Display amount of NECTAR -->
+            <section class="wallet" id="wallet" data-view="nct">
+              <h4>Wallet Balance:</h4>
+              <div class="logos">
+                <span class="nectar">
+                  <img src="svg/polyswarm-icon.svg" alt="polyswarm" height"16" />
+                </span>
+                <span class="ethereum">
+                  <i class="fab fa-ethereum"></i>
+                </span>
+                <img class="background" src="svg/wallet-icon-bg.svg" alt="HEXAGON" />
+              </div>
+              <div class="amount-container">
+                <p class="nct">0.00 <strong>nct</strong></p>
+                <p class="eth">0.00 <strong>eth</strong></p>
+              </div>
+            </section>
+          </div>
+        </div>
+      </header>
+
+      <!-- Application body -->
+      <section class="app-body grid" role="grid">
+        <!-- All-time process info -->
+        <div class="content content-loading" role="gridcell" id="processes-archive">
+          <header>
+            <div>
+              <h2>Processed artifacts</h2>
+              <!-- <ul class="filters">
+                <li class="filter-label">
+                  <label for="filter-graph-unit">by</label>
+                </li>
+                <li class="filter-input">
+                  <select id="filter-graph-unit" name="filter-graph-unit">
+                    <option value="today">Today</option>
+                    <option value="week">Week</option>
+                    <option value="month">Month</option>
+                    <option value="total">Total</option>
+                  </select>
+                  <i class="fas fa-caret-down"></i>
+                </li>
+                <li class="filter-label">
+                  <label for="filter-graph-date">since</label>
+                </li>
+                <li class="filter-input">
+                  <input data-toggle="datepicker" id="filter-graph-date" name="filter-graph-date" />
+                  <i class="fas fa-caret-down"></i>
+                </li>
+              </ul> -->
+            </div>
+            <p>Data ready</p>
+          </header>
+          <section></section>
+          <div class="loading-component">
+            <i></i>
+            <i class="filled"></i>
+            <i></i>
+          </div>
+        </div>
+        <!-- Current process info -->
+        <div class="content content-loading" role="gridcell" id="current-processes">
+          <header>
+            <h2>Current processes</h2>
+          </header>
+          <section>
+
+            <div class="hexagon-field-inline" id="counter-artifacts-processing">
+              <span data-svg-src="svg/hexagon-text.svg" data-svg-w="74" data-svg-h="66">24</span>
+              <p>artifacts being analyzed</p>
+              <span class="hexagon-field-end" data-svg-src="svg/hexagon-rect-r-alt.svg" data-svg-w="24" data-svg-h="65"></span>
+            </div>
+
+            <div class="hexagon-field-inline" id="counter-backends-running">
+              <span data-svg-src="svg/hexagon-text.svg" data-svg-w="74" data-svg-h="65">2</span>
+              <p>Hosts running</p>
+              <span class="hexagon-field-end" data-svg-src="svg/hexagon-rect-r-alt.svg" data-svg-w="24" data-svg-h="65"></span>
+            </div>
+
+            <div class="hexagon-field-inline red" id="counter-errors">
+              <span data-svg-src="svg/hexagon-text.svg" data-svg-w="74" data-svg-h="65">4</span>
+              <p>Generated errors</p>
+              <span class="hexagon-field-end" data-svg-src="svg/hexagon-rect-r-alt.svg" data-svg-w="24" data-svg-h="65"></span>
+            </div>
+
+            <div class="hexagon-field-inline green" id="counter-bounties-settled">
+              <span data-svg-src="svg/hexagon-text.svg" data-svg-w="74" data-svg-h="65">17</span>
+              <p>Settled bounties</p>
+              <span class="hexagon-field-end" data-svg-src="svg/hexagon-rect-r-alt.svg" data-svg-w="24" data-svg-h="65"></span>
+            </div>
+
+          </section>
+          <div class="loading-component">
+            <i></i>
+            <i></i>
+            <i></i>
+          </div>
+        </div>
+        <!-- Machine inspector -->
+        <div class="content content-loading" role="gridcell" id="machine-status">
+          <header>
+            <h2>Connected analysis backends</h2>
+          </header>
+          <section></section>
+          <div class="loading-component">
+            <i></i>
+            <i></i>
+            <i></i>
+          </div>
+        </div>
+        <!-- Memory info -->
+        <!-- <div class="content content-loading" role="gridcell" id="memory-info">
+          <header>
+            <h2>Usage statistics</h2>
+          </header>
+          <section></section>
+          <div class="loading-component">
+            <i></i>
+            <i></i>
+            <i></i>
+          </div>
+        </div> -->
+      </section>
+
+    </main>
+
+    <script src="scripts/main.js"></script>
+  </body>
+</html>

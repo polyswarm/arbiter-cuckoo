@@ -1,0 +1,102 @@
+// definition for the custom 'wallet' element
+// the 'wallet' displays the total of collected NECTAR
+.wallet {
+  position: relative;
+  min-height: 77px;
+  min-width: 170px;
+  color: #fff;
+
+  &:hover {
+    cursor: pointer;
+  }
+
+  // wallet label
+  h4 {
+    position: relative;
+    top: 6px;
+    margin: 0;
+    font-size: 11px;
+    font-weight: 500;
+    text-align: right;
+    text-transform: uppercase;
+    font-style: italic;
+  }
+
+  // hexagon nectar logo
+  .logos {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    z-index: 2;
+    padding: 14px 0;
+    left: 25px;
+
+    & > span {
+      position: relative;
+      flex-basis: 100%;
+      z-index: 3;
+
+      &.nectar > img {
+        height: 16px;
+      }
+    }
+
+    .background {
+      position: absolute;
+      top: 0;
+    }
+  }
+
+  // the container for the values
+  .amount-container {
+    position: relative;
+    align-items: center;
+    z-index: 1;
+    top: 9px;
+    padding-left: 50px;
+    color: #fff;
+    height: 45px;
+    background-color: #000;
+    margin-left: 23px;
+    background-color: #3F106B;
+    box-shadow: 0px 2px 0px #2E0A4F,
+                inset 0px 1px 0px rgba(255,255,255,.12);
+
+    & > p,
+    & > strong {
+      margin-left: 5px;
+      font-size: 15px;
+      text-align: left;
+    }
+
+    & > p {
+      flex-basis: 100%;
+      margin: 0 5px 0 0;
+      padding-top: 3px;
+
+      & > strong {
+        font-variant: small-caps;
+        opacity: .7;
+        font-size: .9em;
+        margin-left: 5px;
+      }
+
+      &::selection {
+        background-color: transparent;
+      }
+    }
+
+    // right hexagon 'corner' element (loads .svg)
+    &:after {
+      content: "";
+      position: absolute;
+      right: -18px;
+      top: 0;
+      width: 19px;
+      height: 47px;
+      background: url(../svg/hexagon-rect-r.svg);
+    }
+
+  }
+}

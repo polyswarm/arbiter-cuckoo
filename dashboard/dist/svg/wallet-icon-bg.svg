@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="72px" height="63px" viewBox="0 0 72 63" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <!-- Generator: Sketch 50.2 (55047) - http://www.bohemiancoding.com/sketch -->
+    <title>Polyswarm Icon</title>
+    <desc>Created with Sketch.</desc>
+    <defs>
+        <filter x="-1.9%" y="-2.2%" width="103.8%" height="108.9%" filterUnits="objectBoundingBox" id="filter-1">
+            <feOffset dx="0" dy="2" in="SourceAlpha" result="shadowOffsetOuter1"></feOffset>
+            <feColorMatrix values="0 0 0 0 0.310660381   0 0 0 0 0.109608434   0 0 0 0 0.495083971  0 0 0 1 0" type="matrix" in="shadowOffsetOuter1" result="shadowMatrixOuter1"></feColorMatrix>
+            <feMerge>
+                <feMergeNode in="shadowMatrixOuter1"></feMergeNode>
+                <feMergeNode in="SourceGraphic"></feMergeNode>
+            </feMerge>
+        </filter>
+        <path d="M41.4535888,2.23125 C40.6157982,0.853125 39.0766014,0 37.4107619,0 L15.5892381,0 C13.9233986,0 12.3842018,0.853125 11.5464112,2.23125 L0.635649297,20.23125 C-0.211883099,21.628125 -0.211883099,23.3625 0.635649297,24.76875 L11.5464112,42.76875 C12.3842018,44.146875 13.9233986,45 15.5892381,45 L37.4107619,45 C39.0766014,45 40.6157982,44.146875 41.4535888,42.76875 L52.3643507,24.76875 C53.2118831,23.371875 53.2118831,21.6375 52.3643507,20.23125 L41.4535888,2.23125 Z" id="path-2"></path>
+        <path d="M56.3143093,3.12375 C55.1761787,1.194375 53.0851944,0 50.8221671,0 L21.1778329,0 C18.9148056,0 16.8238213,1.194375 15.6856907,3.12375 L0.863523573,28.32375 C-0.287841191,30.279375 -0.287841191,32.7075 0.863523573,34.67625 L15.6856907,59.87625 C16.8238213,61.805625 18.9148056,63 21.1778329,63 L50.8221671,63 C53.0851944,63 55.1761787,61.805625 56.3143093,59.87625 L71.1364764,34.67625 C72.2878412,32.720625 72.2878412,30.2925 71.1364764,28.32375 L56.3143093,3.12375 Z M67.7099698,32.5709135 L52.7750807,57.9555288 C52.3883738,58.6033654 51.6816335,59 50.9348891,59 L21.0651109,59 C20.3050318,59 19.5982915,58.6033654 19.2249193,57.9555288 L4.29003021,32.5709135 C3.90332326,31.9098558 3.90332326,31.0901442 4.29003021,30.4423077 L19.2249193,5.05769231 C19.5982915,4.39663462 20.3050318,4 21.0651109,4 L50.9348891,4 C51.6949682,4 52.4017085,4.39663462 52.7750807,5.04447115 L67.7099698,30.4290865 C68.0966767,31.0901442 68.0966767,31.9098558 67.7099698,32.5709135 Z" id="path-4"></path>
+    </defs>
+    <g id="Polyswarm" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="Artboard-3" transform="translate(-195.000000, -308.000000)">
+            <g id="Polyswarm-Icon" transform="translate(195.000000, 308.000000)">
+                <g id="hexagon-s" filter="url(#filter-1)" transform="translate(9.000000, 9.000000)">
+                    <mask id="mask-3" fill="white">
+                        <use xlink:href="#path-2"></use>
+                    </mask>
+                    <use id="Shape" fill="#8500FF" fill-rule="nonzero" xlink:href="#path-2"></use>
+                </g>
+                <g id="hexagon-l">
+                    <mask id="mask-5" fill="white">
+                        <use xlink:href="#path-4"></use>
+                    </mask>
+                    <use id="Shape" fill="#9C38FF" fill-rule="nonzero" xlink:href="#path-4"></use>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

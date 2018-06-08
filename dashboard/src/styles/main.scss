@@ -1,0 +1,32 @@
+@import "./variables";
+
+// import font-oriented stylesheets
+@import "./lib/typeface-rubik"; // => Rubik
+@import "./lib/fontawesome/fontawesome"; // => FontAwesome-core
+@import "./lib/fontawesome/fa-brands"; // => FontAwesome-variants
+@import "./lib/fontawesome/fa-regular";
+@import "./lib/fontawesome/fa-solid";
+@import "./lib/fontawesome/fa-light";
+
+// other npm imports
+@import '@fengyuanchen/datepicker/src/css/_datepicker';
+
+// base document setup
+body {
+  font-family: "Rubik", "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #f5f5f5;
+  color: #222;
+  margin: 0;
+}
+
+// import application styles and components
+@import "components/wallet";
+@import "components/hexagon-field";
+@import "components/filters";
+@import "components/content";
+@import "components/grid";
+@import "components/table";
+@import "components/charts";
+@import "components/app";

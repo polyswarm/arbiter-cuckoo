@@ -7,19 +7,18 @@
 
 from __future__ import print_function
 
-import logging
 import gevent
+import logging
 import os.path
 
+from arbiter.backends import load_backends, analysis_backends
 from arbiter.bounties import BountyComponent
+from arbiter.events import Events, event_register_instance
+from arbiter.monitor import MonitorComponent
+from arbiter.polyswarm_api import PolySwarmAPI
 from arbiter.verdicts import VerdictComponent, reset_pending_jobs
 from arbiter.worker_api import APIComponent
 
-from arbiter.events import Events, event_register_instance
-
-from arbiter.polyswarm_api import PolySwarmAPI
-from arbiter.backends import load_backends, analysis_backends
-from arbiter.monitor import MonitorComponent
 from arbiter import ipfs
 
 log = logging.getLogger(__name__)
