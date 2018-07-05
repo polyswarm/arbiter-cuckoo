@@ -9,6 +9,15 @@ let resolveHash = (key, data) => {
   return { key, data };
 };
 
+// ajax request as a promise
+let request = (url = '', method = 'GET', label = '') => new Promise((resolve, reject) => {
+  $.ajax({
+    url,
+    success: response => resolve(resolveHash(label, response)),
+    error: errors => reject(errors)
+  });
+});
+
 const Response  = {
   SKIP_SOCKET: window.location.href.indexOf('skip-socket') > -1,
   MESSAGE_TYPES: [
@@ -18,10 +27,12 @@ const Response  = {
     'counter-bounties-settled',
     'wallet',
     'backends'
-  ]
+  ],
+  HOST: window.location.host
 };
+
 const Processes = [];
-const websocket = "ws://bak.cuckoo.sh:9080/kraken/tentacle";
+const websocket = `ws://${Response.HOST}/kraken/tentacle`;
 
 function bindLoaderAnimation(el) {
   let step = 0;
@@ -53,6 +64,12 @@ export default function DomStart() {
       .done(svgs => resolve(resolveHash('svgs', svgs)))
       .failed(errors => reject(errors));
   }));
+
+  //
+  // Preload data on app init for the manual bounties and artifacts
+  //
+  Processes.push(request(`http://${Response.HOST}/dashboard/bounties/manual`, 'GET', 'manual-bounties'));
+  Processes.push(request(`http://${Response.HOST}/dashboard/bounties/pending`, 'GET', 'pending-bounties'));
 
   //
   // Connect websocket stream
@@ -88,7 +105,6 @@ export default function DomStart() {
     }));
 
   return Promise.all(Processes).then(results => {
-
     for(let r in results)
       Response[results[r].key] = results[r].data;
     return _resolve(Response);

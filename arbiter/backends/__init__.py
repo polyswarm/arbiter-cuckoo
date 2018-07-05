@@ -43,10 +43,6 @@ class AnalysisBackend(object):
     def configure(self, conf):
         """Set up analysis backend with plugin-specific configuration"""
 
-    def check_api_key(self, x_api_key):
-        # TODO: constant-time compare or HMAC
-        return self.api_key == x_api_key
-
     def submit_artifact(self, artifact):
         """Submit an artifact for analysis.
 
@@ -60,3 +56,6 @@ class AnalysisBackend(object):
     def artifact_status(self, artifact):
         """
         """
+
+    def health_check(self):
+        pass

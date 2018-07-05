@@ -4,11 +4,14 @@
 import json
 import logging
 import os.path
+import re
 import requests
 
 from arbiter.utils import AtomicWrite
 
 log = logging.getLogger(__name__)
+
+r_valid_hash = re.compile(r"^[a-zA-Z0-9]+$")
 
 ipfs_host = None
 cache_path = None
@@ -17,6 +20,8 @@ class IPFSNotFoundError(Exception):
     pass
 
 def ipfs_download(hash, uri=None):
+    if not r_valid_hash.match(hash):
+        raise ValueError("Invalid IPFS hash %r" % hash)
     if uri is None:
         uri = hash
     path = os.path.join(cache_path, hash)

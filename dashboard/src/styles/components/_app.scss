@@ -61,7 +61,6 @@
       border-color: #d2d2d2;
       &:first-child {
         border-bottom-width: 1px;
-        border-right-width: 1px;
       }
       &:nth-child(2) { border-bottom-width: 1px; }
       &:nth-child(3) { border-left-width: 1px; }
@@ -70,6 +69,14 @@
 
 }
 
+// page switcher utility (src/scripts/lib/page-switcher.es6)
+.page-switcher {
+	&__pages > div:not(.active) {
+		display: none;
+	}
+}
+
+// generic styling
 #memory-info,
 #current-processes {
   &:not(.content-loading) > section {
@@ -98,4 +105,8 @@
       font-size: 15px;
     }
   }
+}
+
+#bounty-verdicts {
+  border-left-width: 1px;
 }

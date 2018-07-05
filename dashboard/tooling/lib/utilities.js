@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import notifier from 'node-notifier';
 
 class Utilities {
 
@@ -44,6 +45,15 @@ class Utilities {
   static wasRequired(_req = undefined) {
     let isCLI = _req.main === module;
     return !isCLI;
+  }
+
+  // pushes a native notification to the client
+  static notify(message = '') {
+    notifier.notify({
+      title: 'WCMP',
+      icon: Utilities.cwd(`tooling/resources/wcmp-icon.png`),
+      message
+    });
   }
 
 }

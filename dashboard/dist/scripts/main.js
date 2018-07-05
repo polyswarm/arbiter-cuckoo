@@ -40226,23 +40226,31 @@ process.umask = function() { return 0; };
 
 },{}],107:[function(require,module,exports){
 "use strict";Object.defineProperty(exports,"__esModule",{value:true});exports.default=DomError;// DomError handler - should be called whenever something bad excepted
-function DomError(){var errs=arguments.length>0&&arguments[0]!==undefined?arguments[0]:[];console.log(errs);}
+function DomError(){var errs=arguments.length>0&&arguments[0]!==undefined?arguments[0]:[];console.error(errs);}
 
 },{}],108:[function(require,module,exports){
 'use strict';Object.defineProperty(exports,"__esModule",{value:true});exports.default=DomLoaded;// DOMLoaded handler
 function DomLoaded(){console.log('dom is loaded');}
 
 },{}],109:[function(require,module,exports){
-'use strict';Object.defineProperty(exports,"__esModule",{value:true});exports.default=DomReady;var _jquery=require('jquery');var _jquery2=_interopRequireDefault(_jquery);var _chart=require('chart.js');var _chart2=_interopRequireDefault(_chart);var _moment=require('moment');var _moment2=_interopRequireDefault(_moment);var _handlebars=require('handlebars');var _handlebars2=_interopRequireDefault(_handlebars);var _patternomaly=require('patternomaly');var _patternomaly2=_interopRequireDefault(_patternomaly);require('@fengyuanchen/datepicker');function _interopRequireDefault(obj){return obj&&obj.__esModule?obj:{default:obj};}// hold some global params for the app
-// import dependencies (listed in package.json -- dependencies)
-var Application={data:{},datepickerActive:false,artifactAPIUrl:'http://bak.cuckoo.sh:9080/dashboard/charts/artifacts',noop:function noop(){return new Function();},templates:{// renders table overview of backends
+'use strict';Object.defineProperty(exports,"__esModule",{value:true});exports.default=DomReady;var _jquery=require('jquery');var _jquery2=_interopRequireDefault(_jquery);var _chart=require('chart.js');var _chart2=_interopRequireDefault(_chart);var _moment=require('moment');var _moment2=_interopRequireDefault(_moment);var _handlebars=require('handlebars');var _handlebars2=_interopRequireDefault(_handlebars);var _patternomaly=require('patternomaly');var _patternomaly2=_interopRequireDefault(_patternomaly);require('@fengyuanchen/datepicker');var _pageSwitcher=require('./lib/page-switcher');var _pageSwitcher2=_interopRequireDefault(_pageSwitcher);function _interopRequireDefault(obj){return obj&&obj.__esModule?obj:{default:obj};}// hold some global params for the app
+var Application={data:{},datepickerActive:false,// artifactAPIUrl: 'http://bak.cuckoo.sh:9080/dashboard/charts/artifacts',
+artifactAPIUrl:'http://'+window.location.host+'/dashboard/charts/artifacts',chartInitialized:false,chart:undefined,settledBounties:[],noop:function noop(){return new Function();},templates:{// renders table overview of backends
 backends:function backends(data){return _handlebars2.default.compile('\n      <table class="table content-fit">\n        <thead>\n          <tr>\n            <th class="name">Name</th>\n            <th>CPU</th>\n            <th>Disk</th>\n            <th>Memory</th>\n          </tr>\n        </thead>\n        <tbody>\n          {{#each backends}}\n            <tr>\n              <td class="name">{{@key}}</td>\n              <td>{{cpu}}%</td>\n              <td>{{percentage diskused disktotal}}</td>\n              <td><span>{{percentage memused memtotal}}</td>\n            </tr>\n          {{/each}}\n        </tbody>\n      </table>\n    ')(data);},// alternative template that just displays machine info
-performanceDisplay:function performanceDisplay(data){return _handlebars2.default.compile('\n      <div class="erector-container">\n        <div>\n          <div class="erector">\n            <div class="erector-fill">\n              <div class="erector-value" style="height: {{cpu}}%;"></div>\n            </div>\n            <h4>cpu <span>{{cpu}}%</span></h4>\n          </div>\n          <div class="erector">\n            <div class="erector-fill">\n              <div class="erector-value" style="height: {{memory}}%;"></div>\n            </div>\n            <h4>memory <span>{{memory}}%</span></h4>\n          </div>\n          <div class="erector">\n            <div class="erector-fill">\n              <div class="erector-value" style="height: {{disk}}%"></div>\n            </div>\n            <h4>disk <span>{{disk}}%</span></h4>\n          </div>\n        </div>\n        <h3>{{name}}</h3>\n      </div>\n    ')(data);}}};// create a handlebars method to return a percentage from two wholes (from/to)
-_handlebars2.default.registerHelper('percentage',function(part,total){var ret=Math.ceil(part/total*100);if(ret>=90)ret='<span class="danger">'+ret+'</span>';return new _handlebars2.default.SafeString(ret+'%');});// bouncy bouncy microplugin
+performanceDisplay:function performanceDisplay(data){return _handlebars2.default.compile('\n      <div class="erector-container">\n        <div>\n          <div class="erector">\n            <div class="erector-fill">\n              <div class="erector-value" style="height: {{cpu}}%;"></div>\n            </div>\n            <h4>cpu <span>{{cpu}}%</span></h4>\n          </div>\n          <div class="erector">\n            <div class="erector-fill">\n              <div class="erector-value" style="height: {{memory}}%;"></div>\n            </div>\n            <h4>memory <span>{{memory}}%</span></h4>\n          </div>\n          <div class="erector">\n            <div class="erector-fill">\n              <div class="erector-value" style="height: {{disk}}%"></div>\n            </div>\n            <h4>disk <span>{{disk}}%</span></h4>\n          </div>\n        </div>\n        <h3>{{name}}</h3>\n      </div>\n    ')(data);},// bounty UI
+verdictBounty:function verdictBounty(data){return _handlebars2.default.compile('\n      <article class="verdict-item" data-bounty-guid="{{guid}}">\n        <header>\n          <h2><strong>Bounty</strong> {{short-uid guid 5}}</h2>\n          <ul>\n            <li class="bounty-amount">{{amount}} <strong>NCT</strong></li>\n            <li class="bounty-created">{{moment-from created}}</li>\n          </ul>\n        </header>\n        <section class="verdict-artifacts">\n          <ul class="summary-list">\n            <li>{{num_artifacts}} artifacts</li>\n            <li>{{#if truth_settled}}Settled{{else}}Unsettled{{/if}}</li>\n          </ul>\n          <div class="hidden-inactive" data-populate="artifacts">\n            <!-- populates artifactVerdict -->\n          </div>\n        </section>\n        <footer>\n          <a href="load:{{guid}}">Artifact verdicts</a>\n        </footer>\n      </article>\n    ')(data);},// artifact verdict UI
+verdictArtifacts:function verdictArtifacts(data){return _handlebars2.default.compile('\n      {{#each artifacts}}\n        <article class="artifact-details">\n          <header class="artifact-details-header">\n            <div class="icon"></div>\n            <div>\n              <h3>{{name}}</h3>\n              <ul class="backend-resource-list">\n                {{#each verdicts}}\n                  <li>\n                    <a href="{{meta.href}}" target="_blank"><i class="fas fa-file-contract"></i> {{@key}}</a>\n                    {{{verdict-badge verdict}}}\n                  </li>\n                {{/each}}\n              </ul>\n            </div>\n          </header>\n          <h4>Expert Verdicts:</h4>\n          <ul class="expert-verdicts">\n          {{#each expertOpinions}}\n            <li>\n              <div>\n                <h5>{{author}}</h5>\n                <p>{{metadata}}</p>\n              </div>\n              <div class="verdict-badge-holder">\n                {{{verdict-badge verdicts}}}\n              </div>\n            </li>\n          {{else}}\n            <li><em>No opinions</em></li>\n          {{/each}}\n          </ul>\n          <ul class="verdict-artifact" data-artifact-verdict="{{hash}}">\n            <li>\n              <label for="select-{{hash}}-unsafe">\n                <input type="radio" name="verdict-{{hash}}" id="select-{{hash}}-unsafe" value="true" />\n                <p>unsafe</p>\n              </label>\n            </li>\n            <li>\n              <label for="select-{{hash}}-safe">\n                <input type="radio" name="verdict-{{hash}}" id="select-{{hash}}-safe" value="false" />\n                <p>safe</p>\n              </label>\n            </li>\n          </ul>\n        </article>\n      {{/each}}\n      {{#unless truth_settled}}\n        <p class="explanatory">Select artifacts to mark safe or unsafe. Then click submit to settle this bounty.</p>\n        <ul class="button-list">\n          <li><button class="grey" data-ignore-bounty>Ignore</button></li>\n          <li><button class="purple" type="submit" data-verdict-bounty>Submit</button></li>\n        </ul>\n      {{else}}\n        <p class="explanatory">You settled </p>\n      {{/unless}}\n    ')(data);}}};// create a handlebars method to return a percentage from two wholes (from/to)
+// import dependencies (listed in package.json -- dependencies)
+_handlebars2.default.registerHelper('percentage',function(part,total){var ret=Math.ceil(part/total*100);if(ret>=90)ret='<span class="danger">'+ret+'</span>';return new _handlebars2.default.SafeString(ret+'%');});// handlebars method to shorten an id
+_handlebars2.default.registerHelper('short-uid',function(uid){var len=arguments.length>1&&arguments[1]!==undefined?arguments[1]:3;return new _handlebars2.default.SafeString(uid.substring(0,len)+'...'+uid.substring(uid.length-len,uid.length));});// handlebars method to display dates as '... from ...'
+_handlebars2.default.registerHelper('moment-from',function(){var date=arguments.length>0&&arguments[0]!==undefined?arguments[0]:new Date();return new _handlebars2.default.SafeString((0,_moment2.default)(date).fromNow());});// handlebars method to render 'safe' / 'unsafe' badges in the ui
+_handlebars2.default.registerHelper('verdict-badge',function(){var verdict=arguments.length>0&&arguments[0]!==undefined?arguments[0]:null;if(verdict instanceof Array){return new _handlebars2.default.SafeString('<span class="verdict-badge '+(verdict[0]==true?'unsafe':'safe')+'"></span>');}else if(verdict==null){return new _handlebars2.default.SafeString('<span class="verdict-badge">unknown</span>');}else if(verdict<50){return new _handlebars2.default.SafeString('<span class="verdict-badge safe"></span>');}else{return new _handlebars2.default.SafeString('<span class="verdict-badge unsafe"></span>');}});// bouncy bouncy microplugin
 _jquery2.default.fn.Bounce=function(){var _this=this;var config=arguments.length>0&&arguments[0]!==undefined?arguments[0]:{};// configure some settings as an object + defaults
 var options=_jquery2.default.extend({speed:500,delay:150,from:1,to:1.05},config);// render basic css props
 this.css({transform:'scale('+options.from+')',transition:'transform '+options.speed+'ms ease-out'});// perform the bounce maneuver
-setTimeout(function(){_this.css({transform:'scale('+options.to+')'});setTimeout(function(){_this.css({transform:'scale('+options.from+')'});},options.speed);},options.delay);};/*
+setTimeout(function(){_this.css({transform:'scale('+options.to+')'});setTimeout(function(){_this.css({transform:'scale('+options.from+')'});},options.speed);},options.delay);};// ajax request helper as a promise
+var request=function request(){var url=arguments.length>0&&arguments[0]!==undefined?arguments[0]:'';var type=arguments.length>1&&arguments[1]!==undefined?arguments[1]:'GET';var data=arguments.length>2&&arguments[2]!==undefined?arguments[2]:{};return new Promise(function(resolve,reject){// stringify data before send
+if(data)data=JSON.stringify(data);_jquery2.default.ajax({url:url,type:type,data:data,dataType:'json',contentType:'application/json',success:function success(response){return resolve(response);},error:function error(errors){return reject(errors);}});});};/*
   updates the wallet amount
  */function updateWalletAmount(message){// https://stackoverflow.com/questions/9461621/how-to-format-a-number-as-2-5k-if-a-thousand-or-more-otherwise-900-in-javascrip
 var shortValue=function shortValue(number,precision){var abbrev=['','k','m','b','t'];var unrangifiedOrder=Math.floor(Math.log10(Math.abs(number))/3);var order=Math.max(0,Math.min(unrangifiedOrder,abbrev.length-1));var suffix=abbrev[order];return(number/Math.pow(10,order*3)).toFixed(precision)+suffix;};var $el=(0,_jquery2.default)("#wallet");// if the wallet is set to display NECTAR, display NCT
@@ -40259,25 +40267,101 @@ $container.empty();// render backend charts recursively
 for(var be in data.backends){var backend=data.backends[be];var stats={name:backend.name,disk:Math.ceil(100/backend.disktotal*backend.diskused),memory:Math.ceil(100/backend.memtotal*backend.memused),cpu:Math.ceil(backend.cpu)// let $tmpl = $(Application.templates.performanceChart(backend));
 };var $tmpl=(0,_jquery2.default)(Application.templates.performanceDisplay(stats));$container.append($tmpl);}if($el.hasClass('content-loading'))$el.removeClass('content-loading');}/*
   Renders a processed artifacts chart in the designated area
- */function initializeArtifactChart(){var $el=(0,_jquery2.default)("#processes-archive");var $canvas=(0,_jquery2.default)('<canvas width="100%" height="100%" />');$el.find('section').append($canvas);var renderChart=function renderChart(data){var ctx=$canvas[0].getContext('2d');data=data.map(function(point){return{x:_moment2.default.unix(point[0]).toISOString(),y:point[1]};});return new _chart2.default(ctx,{type:'line',data:{datasets:[{data:data,// backgroundColor: pattern.draw('diagonal', 'rgba(109,85,134,.6)'),
-backgroundColor:'rgba(63,16,107,.7)',pointBackgroundColor:'#21073A',pointHighlightFill:'#FFF',pointHighlightStroke:'#DDD',pointBorderColor:'#21073A',pointStyle:'circle',pointRadius:1}]},options:{responsive:true,maintainAspectRatio:false,legend:false,scales:{xAxes:[{type:'time',display:true,time:{unit:'day',displayFormats:{day:'MMM DD YYYY'}},scaleLabel:{display:false}}],yAxes:[{autoSkip:true,ticks:{beginAtZero:true}}]},layout:{padding:{right:10,top:10,bottom:10,left:10}},tooltips:{callbacks:{label:Application.noop(),title:function title(tooltipItem,data){var item=tooltipItem[0];var date=(0,_moment2.default)(item.xLabel).format('MM-DD-YYYY hh:mm A');var total=item.yLabel;return total+' artifacts processed at '+date;}}}}});};_jquery2.default.get(Application.artifactAPIUrl,function(response){renderChart(response.data);if($el.hasClass('content-loading'))$el.removeClass('content-loading');});}// DOMReady handler
+ */function initializeArtifactChart(){var $el=(0,_jquery2.default)("#processes-archive");var $canvas=(0,_jquery2.default)('<canvas width="100%" height="100%" />');$el.find('section').append($canvas);var renderChart=function renderChart(data){var ctx=$canvas[0].getContext('2d');data=data.map(function(point){return{x:_moment2.default.unix(point[0]),y:point[1]};});var c=new _chart2.default(ctx,{type:'line',data:{datasets:[{data:data,backgroundColor:'rgba(63,16,107,.1)',borderColor:'rgba(63,16,107,.7)',pointBackgroundColor:'rgba(63,16,107, .5)',pointHighlightFill:'#FFF',pointHighlightStroke:'#DDD',pointHitRadius:10,pointBorderColor:'#21073A',pointStyle:'circle',pointRadius:3,pointHoverRadius:5,pointHoverBackgroundColor:'#fff',pointHoverBorderWidth:4}]},options:{responsive:true,maintainAspectRatio:false,legend:false,scales:{xAxes:[{type:'time',display:true,time:{unit:'day',displayFormats:{day:'MMM DD YYYY'}},scaleLabel:{display:false}}],yAxes:[{autoSkip:true,ticks:{beginAtZero:true}}]},layout:{padding:{right:10,top:10,bottom:10,left:10}},tooltips:{callbacks:{label:Application.noop(),title:function title(tooltipItem,data){var item=tooltipItem[0];var date=(0,_moment2.default)(item.xLabel).format('MM-DD-YYYY hh:mm A');var total=item.yLabel;return total+' artifacts processed at '+date;}}},elements:{line:{tension:0.2,cubicInterpolationMode:'monotone'}},hover:{onHover:function onHover(e){var point=this.getElementAtEvent(e);if(point.length)e.target.style.cursor='pointer';else e.target.style.cursor='default';}}}});return c;};var updateChart=function updateChart(){_jquery2.default.get(Application.artifactAPIUrl,function(response){if(!Application.chartInitialized){Application.chart=renderChart(response.data);Application.chartInitialized=true;if($el.hasClass('content-loading'))$el.removeClass('content-loading');return;}});};updateChart();}/*
+  Generic handler for settling a bounty
+ */function bountySettleHandler(element,bounty){if(!element)return;// action button
+var parent=element.hasClass('verdict-item')?element:element.parents('.verdict-item');var submit=parent.find('button[data-verdict-bounty]');var ignore=parent.find('button[data-ignore-bounty]');var stateHandlers={freeze:function freeze(){// disables inputs / buttons
+parent.find('.verdict-artifact label').addClass('disabled');parent.find('.verdict-artifact label > input').prop('disabled',true);(0,_jquery2.default)(submit,ignore).prop('disabled',true);},unfreeze:function unfreeze(){// enables inputs/buttons
+parent.find('.verdict-artifact label').removeClass('disabled');parent.find('.verdict-artifact label > input').prop('disabled',false);(0,_jquery2.default)(submit,ignore).prop('disabled',false);},done:function done(){// pre-action handler
+parent.slideUp();(0,_jquery2.default)("#total-pending");},setPending:function setPending(){parent.appendTo("#pending-bounties");// swaps element to bounties-pending column
+// sets the element to pending
+parent.find('.button-list').hide();parent.find('.button-list').after((0,_jquery2.default)("<p>Bounty is settling...</p>"));var newTotalManual=parseInt((0,_jquery2.default)("#bounty-verdicts").find('#total-manual').text())-1;var newTotalPending=parseInt((0,_jquery2.default)("#bounty-verdicts").find('#total-pending').text())+1;(0,_jquery2.default)("#bounty-verdicts").find("#total-manual").text(newTotalManual);(0,_jquery2.default)("#bounty-verdicts").find("#total-pending").text(newTotalPending);},error:function error(){// displays an error if there is an error
+}// add bounty guid to the
+// when the submit button is clicked, collect all results for the loaded
+// artifacts based on their occurance in the bounty to sent a list back
+// with the verdicts
+};submit.bind('click',function(e){var body={verdicts:[]};for(var a in bounty.artifacts){var hash=bounty.artifacts[a].hash;var verdict=element.find('input[name="verdict-'+hash+'"]:checked');body.verdicts.push(verdict.val()=="true");};// freeze ui
+stateHandlers.freeze();request('/dashboard/bounties/'+bounty.guid,'POST',body).then(function(response){// store this bounty
+Application.settledBounties.push({guid:bounty.guid,callback:function callback(){stateHandlers.done();(0,_jquery2.default)("#total-pending").text(parseInt((0,_jquery2.default)("#bounty-verdicts").find('#total-pending').text())-1);}});stateHandlers.setPending();// stateHandlers.unfreeze();
+}).catch(function(err){return console.error(err);});});}/*
+  A centralized function to format the artifact details stream
+  - note => the input == the output
+ */function formatArtifactVerdicts(bounty){// create list of relevant expert opinions to pass
+// to the template
+for(var i in bounty.artifacts){var item=bounty.artifacts[i];item.expertOpinions=[];var _iteratorNormalCompletion=true;var _didIteratorError=false;var _iteratorError=undefined;try{for(var _iterator=bounty.assertions[Symbol.iterator](),_step;!(_iteratorNormalCompletion=(_step=_iterator.next()).done);_iteratorNormalCompletion=true){var assertion=_step.value;if(!assertion.mask[i])continue;item.expertOpinions.push(assertion);}}catch(err){_didIteratorError=true;_iteratorError=err;}finally{try{if(!_iteratorNormalCompletion&&_iterator.return){_iterator.return();}}finally{if(_didIteratorError){throw _iteratorError;}}}}return bounty;}/*
+  Handler for showing/hiding artifact data
+ */function loadBountyArtifacts(guid,target){var $artifacts=target.find('.verdict-artifacts');request('/dashboard/bounties/'+guid).then(function(data){data=formatArtifactVerdicts(data);console.log(data);if(!$artifacts.hasClass('shown')){var html=(0,_jquery2.default)(Application.templates.verdictArtifacts(data));target.find('[data-populate="artifacts"]').html(html);bountySettleHandler(html,data);}$artifacts.toggleClass('shown');target.find('footer > a[href^="load:"]').text($artifacts.hasClass('shown')?'Cancel':'Artifact verdicts');}).catch(function(err){return console.error(err);});// <== do not forget to handle this in the frontend!
+}/*
+  A function to spawn a bounty item
+ */function createBounty(bounty){return{bounty:bounty,// stores the data object (obj.bounty)
+render:function render(){return(0,_jquery2.default)(Application.templates.verdictBounty(this.bounty));},// renders the bounty html
+init:function init(container){var el=this.render();if(container){container.append(el);el.find('a[href^="load:"]').bind('click',function(e){e.preventDefault();var guid=(0,_jquery2.default)(e.currentTarget).attr('href').split(':')[1];if(!guid)return false;loadBountyArtifacts(guid,el);});}return this;}// initializes everything
+};}/*
+  Initializes the verdict UI
+ */function initializeVerdicts(manual,pending){var bountyContainer=(0,_jquery2.default)("#bounty-verdicts");var bounties={manual:[],pending:[]};for(var bounty in manual){bounties.manual.push(createBounty(manual[bounty]));}for(var _bounty in pending){bounties.pending.push(createBounty(pending[_bounty]));}// populate list-totals
+bountyContainer.find("#total-manual").text(manual.length);bountyContainer.find("#total-pending").text(pending.length);for(var b in bounties.manual){bounties.manual[b].init(bountyContainer.find('#manual-bounties'));}for(var _b in bounties.pending){bounties.pending[_b].init(bountyContainer.find('#pending-bounties'));}//
+// // generate html
+// let $manualBounties = $(manual.map(item => Application.templates.verdictBounty(item)).join(""));
+// let $pendingBounties = $(pending.map(item => Application.templates.verdictBounty(item)).join(""));
+//
+// // append html
+// bountyContainer.find('#manual-bounties').html($manualBounties);
+// bountyContainer.find('#pending-bounties').html($pendingBounties);
+//
+// // bind the click listener to toggle the detailed verdict view
+// bountyContainer.find('.verdict-item > footer > a').bind('click', e => {
+//
+//   e.preventDefault();
+//   let link = $(e.currentTarget);
+//   let guid = link.attr('href').split(':')[1];
+//   let target = link.parents(".verdict-item").find('.verdict-artifacts');
+//
+//   if(!guid) {
+//     console.log('Missing bounty GUID! Content will not load.');
+//     return false;
+//   }
+//
+//   request(`/dashboard/bounties/${guid}`).then(data => {
+//
+//     data = formatArtifactVerdicts(data);
+//
+//     if(!target.hasClass('shown')) {
+//       let html = $(Application.templates.verdictArtifacts(data));
+//       target.find('[data-populate="artifacts"]').append(html);
+//       bountySettleHandler(html, data);
+//     } else {
+//       target.find('[data-populate="artifacts"]').empty();
+//     }
+//
+//     target.toggleClass('shown');
+//     link.text(target.hasClass('shown') ? 'Cancel' : 'Artifact verdicts');
+//
+//   }).catch(err => console.error(err)); // <== do not forget to handle this in the frontend!
+//
+// });
+// mock for aesthethics
+setTimeout(function(){bountyContainer.removeClass('content-loading');},1000);}// DOMReady handler
 function DomReady(){var app=arguments.length>0&&arguments[0]!==undefined?arguments[0]:{};Application.data=app;// initialize datepickers within .filter elements
 (0,_jquery2.default)(".filters [data-toggle='datepicker']").datepicker({autoPick:true,autoHide:true}).on('show.datepicker',function(e){Application.datepickerActive=true;}).on('hide.datepicker',function(e){Application.datepickerActive=false;});// handle focussed content fields
 (0,_jquery2.default)("div.content.hover-resize").on('mouseenter',function(e){return(0,_jquery2.default)(e.currentTarget).addClass('content-focus');}).on('mouseleave',function(e){if(!Application.datepickerActive)(0,_jquery2.default)(e.currentTarget).removeClass('content-focus');});// attach message handler to active stream and hook them to their
 // UI components
-if(Application.data.stream instanceof Object){var socketHook=function socketHook(message){// message = JSON.parse(message);
-var type=message.msg;switch(type){// if the message is for the wallet, update the wallet value
+if(Application.data.stream instanceof Object){var socketHook=function socketHook(message){// in case of message being a string, parse it to json
+if(typeof message==='string')message=JSON.parse(message);var type=message.msg;switch(type){// if the message is for the wallet, update the wallet value
 case'wallet':updateWalletAmount(message.wallet);break;// if any of these are the message, update the corresponding element
 case'counter-bounties-settled':case'counter-artifacts-processing':case'counter-backends-running':case'counter-errors':updateCounter(type,message[type]);break;// creates visual reflection of backend performance insights
 case'backends':tablizeBackends(message);// updatePerformanceCharts(message);
-break;}};// append onmessage handler
+break;// when a pending bounty is settled, remove it from the UI
+case'bounties-settled':var stopLoop=false;var targetBounty=message['bounties-settled'].guid;for(var b in Application.settledBounties){if(stopLoop)return;if(Application.settledBounties[b].guid==targetBounty){console.log('Completed bounty '+targetBounty);if(Application.settledBounties[b].callback)Application.settledBounties[b].callback();Application.settledBounties.splice(b,1);stopLoop=true;}}break;}};// append onmessage handler
 Application.data.stream.onmessage=socketHook;// pre-init app with initialized socket data
 if(Application.data.ws){for(var d in Application.data.ws){socketHook(Application.data.ws[d]);}}}// initialize the chart for the processed artifacts
-initializeArtifactChart();}
+initializeArtifactChart();// trigger the verdict system init
+initializeVerdicts(Application.data['manual-bounties'],Application.data['pending-bounties']);// init the page-switcher modules automagically
+_pageSwitcher2.default.findAndBind((0,_jquery2.default)(".page-switcher"));}
 
-},{"@fengyuanchen/datepicker":1,"chart.js":4,"handlebars":90,"jquery":102,"moment":103,"patternomaly":105}],110:[function(require,module,exports){
+},{"./lib/page-switcher":112,"@fengyuanchen/datepicker":1,"chart.js":4,"handlebars":90,"jquery":102,"moment":103,"patternomaly":105}],110:[function(require,module,exports){
 'use strict';Object.defineProperty(exports,"__esModule",{value:true});exports.default=DomStart;var _jquery=require('jquery');var _jquery2=_interopRequireDefault(_jquery);var _svgLoader=require('./lib/svg-loader');var _svgLoader2=_interopRequireDefault(_svgLoader);var _socketHandler=require('./lib/socket-handler');var _socketHandler2=_interopRequireDefault(_socketHandler);function _interopRequireDefault(obj){return obj&&obj.__esModule?obj:{default:obj};}// resolve handler shorthand
-var _resolve=function _resolve(){var _data=arguments.length>0&&arguments[0]!==undefined?arguments[0]:{};return Promise.resolve(_data);};var _reject=function _reject(){var _err=arguments.length>0&&arguments[0]!==undefined?arguments[0]:{};return Promise.reject(_err);};var resolveHash=function resolveHash(key,data){return{key:key,data:data};};var Response={SKIP_SOCKET:window.location.href.indexOf('skip-socket')>-1,MESSAGE_TYPES:['counter-errors','counter-artifacts-processing','counter-backends-running','counter-bounties-settled','wallet','backends']};var Processes=[];var websocket="ws://bak.cuckoo.sh:9080/kraken/tentacle";function bindLoaderAnimation(el){var step=0;setInterval(function(){el.find('i').removeClass('filled').eq(step).addClass('filled');step++;if(step>el.find('i').length-1)step=0;},500);}// DomStart handler - called upon page init
+var _resolve=function _resolve(){var _data=arguments.length>0&&arguments[0]!==undefined?arguments[0]:{};return Promise.resolve(_data);};var _reject=function _reject(){var _err=arguments.length>0&&arguments[0]!==undefined?arguments[0]:{};return Promise.reject(_err);};var resolveHash=function resolveHash(key,data){return{key:key,data:data};};// ajax request as a promise
+var request=function request(){var url=arguments.length>0&&arguments[0]!==undefined?arguments[0]:'';var method=arguments.length>1&&arguments[1]!==undefined?arguments[1]:'GET';var label=arguments.length>2&&arguments[2]!==undefined?arguments[2]:'';return new Promise(function(resolve,reject){_jquery2.default.ajax({url:url,success:function success(response){return resolve(resolveHash(label,response));},error:function error(errors){return reject(errors);}});});};var Response={SKIP_SOCKET:window.location.href.indexOf('skip-socket')>-1,MESSAGE_TYPES:['counter-errors','counter-artifacts-processing','counter-backends-running','counter-bounties-settled','wallet','backends'],HOST:window.location.host};var Processes=[];var websocket='ws://'+Response.HOST+'/kraken/tentacle';function bindLoaderAnimation(el){var step=0;setInterval(function(){el.find('i').removeClass('filled').eq(step).addClass('filled');step++;if(step>el.find('i').length-1)step=0;},500);}// DomStart handler - called upon page init
 function DomStart(){//
 // Bind loader epicness
 //
@@ -40286,11 +40370,14 @@ Processes.push(new Promise(function(resolve,reject){(0,_jquery2.default)(".loadi
 // svg easier with css.
 //
 Processes.push(new Promise(function(resolve,reject){_svgLoader2.default.loadPlaceholders('[data-svg-src]').done(function(svgs){return resolve(resolveHash('svgs',svgs));}).failed(function(errors){return reject(errors);});}));//
+// Preload data on app init for the manual bounties and artifacts
+//
+Processes.push(request('http://'+Response.HOST+'/dashboard/bounties/manual','GET','manual-bounties'));Processes.push(request('http://'+Response.HOST+'/dashboard/bounties/pending','GET','pending-bounties'));//
 // Connect websocket stream
 //
 if(!Response.SKIP_SOCKET)Processes.push(new Promise(function(resolve,reject){var data={};var needMessages=Response.MESSAGE_TYPES;var processedMessages=[];var allMessagesReceived=function allMessagesReceived(){var ret=true;for(var nmsg in needMessages){if(processedMessages.indexOf(needMessages[nmsg])==-1){ret=false;}}return ret;};Response.stream=(0,_socketHandler2.default)(websocket,{onmessage:function onmessage(response){var r=JSON.parse(response);data[r.msg]=r;processedMessages.push(r.msg);if(allMessagesReceived()){resolve(resolveHash('ws',data));}},onerror:function onerror(){return reject('Websocket returned an error');}});}));return Promise.all(Processes).then(function(results){for(var r in results){Response[results[r].key]=results[r].data;}return _resolve(Response);}).catch(function(err){return _reject({err:err,message:'very faulty'});});}
 
-},{"./lib/socket-handler":112,"./lib/svg-loader":113,"jquery":102}],111:[function(require,module,exports){
+},{"./lib/socket-handler":113,"./lib/svg-loader":114,"jquery":102}],111:[function(require,module,exports){
 'use strict';var _domStart=require('./dom-start');var _domStart2=_interopRequireDefault(_domStart);var _domReady=require('./dom-ready');var _domReady2=_interopRequireDefault(_domReady);var _domLoaded=require('./dom-loaded');var _domLoaded2=_interopRequireDefault(_domLoaded);var _domError=require('./dom-error');var _domError2=_interopRequireDefault(_domError);function _interopRequireDefault(obj){return obj&&obj.__esModule?obj:{default:obj};}/*
   document ready - verifies available 3rd party dependencies
   and executes domReady() function that will initialize the app.
@@ -40300,12 +40387,53 @@ if(!Response.SKIP_SOCKET)Processes.push(new Promise(function(resolve,reject){var
 document.addEventListener("DOMContentLoaded",_domLoaded2.default);
 
 },{"./dom-error":107,"./dom-loaded":108,"./dom-ready":109,"./dom-start":110}],112:[function(require,module,exports){
+'use strict';Object.defineProperty(exports,"__esModule",{value:true});var _createClass=function(){function defineProperties(target,props){for(var i=0;i<props.length;i++){var descriptor=props[i];descriptor.enumerable=descriptor.enumerable||false;descriptor.configurable=true;if("value"in descriptor)descriptor.writable=true;Object.defineProperty(target,descriptor.key,descriptor);}}return function(Constructor,protoProps,staticProps){if(protoProps)defineProperties(Constructor.prototype,protoProps);if(staticProps)defineProperties(Constructor,staticProps);return Constructor;};}();var _jquery=require('jquery');var _jquery2=_interopRequireDefault(_jquery);function _interopRequireDefault(obj){return obj&&obj.__esModule?obj:{default:obj};}function _classCallCheck(instance,Constructor){if(!(instance instanceof Constructor)){throw new TypeError("Cannot call a class as a function");}}/*
+    class PageSwitcher
+    - a class that handles 'tabbed' navigation
+    - this class will be traversible and highly configurable using hooks (will improve overall page performance)
+    - For now I'll try what I can do to optimize this page by de-initializing modules that are not visible.
+    default pageswitcher html structure:
+
+    <div class="page-switcher">
+        <nav class="page-switcher__nav">
+            <a href="page-switcher-page-1" class="active">page 1</a>
+            <a href="page-switcher-page-2">page 2</a>
+        </nav>
+        <div class="page-switcher__pages">
+            <div id="page-switcher-page-1" class="active">content for page 1</div>
+            <div id="page-switcher-page-2">content for page 2</div>
+        </div>
+    </div>
+
+ */var PageSwitcher=function(){function PageSwitcher(options){_classCallCheck(this,PageSwitcher);this.nav=options.nav;this.container=options.container;this.pages=[];this.events=_jquery2.default.extend({transition:function transition(){},beforeTransition:function beforeTransition(){},afterTransition:function afterTransition(){}},options.events?options.events:{});this.initialise();}/*
+        Called on instance construction
+     */_createClass(PageSwitcher,[{key:'initialise',value:function initialise(){var _this=this;this.indexPages();this.nav.find('a').bind('click',function(e){e.preventDefault();_this._beforeTransition((0,_jquery2.default)(this));});}/*
+        Creates a short summary about the pages and their names
+     */},{key:'indexPages',value:function indexPages(){var _this=this;this.container.children('div').each(function(i){_this.pages.push({index:i,name:(0,_jquery2.default)(this).attr('id'),el:(0,_jquery2.default)(this),initialised:false});});}/*
+        Prepares a transition
+        - a transition is traversing from page A to page B
+     */},{key:'_beforeTransition',value:function _beforeTransition(el){var name=el.attr('href').replace('#','');var targetPage;if(this.exists(name)){this.nav.find('a').removeClass('active');this.container.children('div').removeClass('active');targetPage=this.getPage(name);this.events.beforeTransition.apply(this,[name,targetPage]);this._transition(targetPage,el);}else{this._afterTransition();}}/*
+        Executes the transition
+     */},{key:'_transition',value:function _transition(page,link){page.el.addClass('active');link.addClass('active');this.events.transition.apply(this,[page,link]);this._afterTransition(page);}/*
+        Finishes the transition
+     */},{key:'_afterTransition',value:function _afterTransition(page){this.events.afterTransition.apply(this,[page]);}/*
+        returns a page by name
+     */},{key:'getPage',value:function getPage(name){if(typeof name==='string'){return this.pages.filter(function(element){return element.name==name;})[0];}else if(typeof name==='number'){return this.pages[name];// will return a page at index x
+}}/*
+        quick-validates if a page exists
+     */},{key:'exists',value:function exists(name){return this.getPage(name)!==undefined;}/*
+        public method for transitioning programatically
+     */},{key:'transition',value:function transition(name){if(typeof name==='number'){var name=this.getPage(name).name;}if(this.exists(name)){this._beforeTransition(this.nav.children('[href='+name+']'));}else{return false;}}// utility function that auto-snaps all the pageswitchers found in the document
+}],[{key:'findAndBind',value:function findAndBind(){var selector=arguments.length>0&&arguments[0]!==undefined?arguments[0]:undefined;if(selector){// default page switcher init
+selector.each(function(){var switcher=new PageSwitcher({nav:(0,_jquery2.default)(this).find('.page-switcher__nav'),container:(0,_jquery2.default)(this).find('.page-switcher__pages')});(0,_jquery2.default)(this).data('pageSwitcher',switcher);});}}}]);return PageSwitcher;}();exports.default=PageSwitcher;
+
+},{"jquery":102}],113:[function(require,module,exports){
 'use strict';Object.defineProperty(exports,"__esModule",{value:true});exports.default=stream;/*
   WebSocket library, credits to Ben
  */function stream(url,callbacks,interval,smart_backoff){var had_initial_connection=false;var call=function call(k,a,msg){if(callbacks[k]){var args=msg!==undefined?[msg,callbacks]:[callbacks];args.push.apply(args,a);return callbacks[k].apply(callbacks,args);}};var onopen=function onopen(){console.log('ws: Established:',url);had_initial_connection=true;call('onopen',arguments);};var onclose=function onclose(){console.warn('ws: Disconnected:',url);if(!had_initial_connection&&smart_backoff){setTimeout(connect,30000);}else{setTimeout(connect,interval);}try{call('onclose',arguments);}finally{callbacks.ws=null;}};var onerror=function onerror(){console.warn('ws: Error:',url,arguments);call('onerror',arguments);};var onmessage=function onmessage(e){var msg=e.data;call('onmessage',arguments,msg);};var connect=function connect(){var ws;try{ws=callbacks.ws=new WebSocket(url);ws.binaryType='arraybuffer';}catch(e){console.log('WebSocket error: '+e);return;}ws.onopen=onopen;ws.onclose=onclose;ws.onerror=onerror;ws.onmessage=onmessage;};callbacks.send=function(msg){try{if(callbacks.ws){//console.log('ws: Send:', msg);
 callbacks.ws.send(msg);}}catch(e){console.error('Failed to send:',e);}};callbacks.close=function(){try{if(callbacks.ws){console.log('ws: Close');callbacks.ws.close();}}catch(e){console.error('Close error: '+e);}};connect();return callbacks;};
 
-},{}],113:[function(require,module,exports){
+},{}],114:[function(require,module,exports){
 'use strict';Object.defineProperty(exports,"__esModule",{value:true});exports._defaults=undefined;var _createClass=function(){function defineProperties(target,props){for(var i=0;i<props.length;i++){var descriptor=props[i];descriptor.enumerable=descriptor.enumerable||false;descriptor.configurable=true;if("value"in descriptor)descriptor.writable=true;Object.defineProperty(target,descriptor.key,descriptor);}}return function(Constructor,protoProps,staticProps){if(protoProps)defineProperties(Constructor.prototype,protoProps);if(staticProps)defineProperties(Constructor,staticProps);return Constructor;};}();/*
   SVGLoader 0.1
 

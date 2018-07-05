@@ -5,12 +5,11 @@ import setuptools
 
 setuptools.setup(
     name="arbiter",
-    version="0.1",
+    version="0.3",
     author="Jurriaan Bremer",
     author_email="jbr@cuckoo.sh",
-    packages=[
-        "arbiter",
-    ],
+    packages=setuptools.find_packages(),
+    zip_safe=False,
     url="https://cuckoo.sh/",
     license="MIT License",
     description="PolySwarm Arbiter backend",

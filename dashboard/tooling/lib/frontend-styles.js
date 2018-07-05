@@ -25,7 +25,8 @@ let createConfig = (options = {}) => Object.assign({
   path: null,
   file: null,
   output: null,
-  watchExtra: []
+  watchExtra: [],
+  notifications: true
 }, options);
 
 /*
@@ -109,7 +110,8 @@ function watch(options = {}) {
     path,
     file,
     output,
-    watchExtra
+    watchExtra,
+    notifications
   } = createConfig(options);
 
   let watchPaths = [util.cwd(path)];
@@ -124,8 +126,13 @@ function watch(options = {}) {
   return chokidar.watch(watchPaths).on('change', (event, p) => {
     compile(options).then(result => {
       // cycle done
+      if(notifications)
+        util.notify('Sass compiled to css');
     }, err => {
       console.log(err);
+      // cycle done
+      if(notifications)
+        util.notify('Sass: An error occured. See terminal for details');
     });
   });
 

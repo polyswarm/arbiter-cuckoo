@@ -5,15 +5,26 @@
  */
 .grid {
   display: grid;
-  grid-template-columns: 50% 50%;
+  grid-template-columns: 40% 30%;
   grid-template-areas:
-    "header header"
-    "content content";
+    "header header right"
+    "left content right";
   grid-auto-rows: 1fr;
   min-height: 0;
   min-width: 0;
 
-  & > *:first-child {
-    grid-area: header;
+  & > aside {
+    grid-area: sidebar;
   }
+
+  & > [data-grid-area] {
+    &[data-grid-area="header"] { grid-area: header; }
+    &[data-grid-area="content"] { grid-area: content; }
+    &[data-grid-area="left"] { grid-area: left; }
+    &[data-grid-area="sidebar"] { grid-area: right; }
+  }
+
+  // & > *:first-child {
+  //   grid-area: header;
+  // }
 }

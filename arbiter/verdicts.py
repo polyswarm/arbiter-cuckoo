@@ -14,6 +14,7 @@ Verdict states:
 import datetime
 import gevent
 import logging
+import time
 
 from arbiter.artifacts import Artifact
 from arbiter.backends import analysis_backends
@@ -25,17 +26,17 @@ from arbiter.const import (
 )
 from arbiter.database import DbSession, DbArtifact, DbArtifactVerdict
 from arbiter.events import periodic, event, dispatch_event
+from arbiter.utils import pct_agree
 
 log = logging.getLogger(__name__)
 
-def majority23(v, n):
-    if not n:
-        return False
-    req = 2.0 * (n / 3.0)
-    return v >= req
+def interval(t, step_time=900):
+    t = int(t)
+    return t + step_time - (t % step_time)
 
 def vote_on_artifact(voters):
-    """Tiered voting algorithm. Patent pending."""
+    """Weighted voting system. Certain trusted voters can shortcut the voting
+    process on malicious samples."""
     high_confidence_malicious = False
 
     votes = 0
@@ -43,46 +44,49 @@ def vote_on_artifact(voters):
     total_votes = 0
     total_voters = 0
 
-    log.debug("%r %r", analysis_backends.keys(),
-              voters.keys())
-
-    # TODO: not sensible when high-confidence voters all vote safe,
-    # or broken when there are no low-confidence voters
     for a in analysis_backends.values():
         vote = voters.get(a.name)
-        log.debug("%r %r", a.name, vote)
-        if not a.trusted:
-            # This will be messy
-            total_weight += a.weight * VERDICT_MALICIOUS
-            total_voters += 1
+        total_voters += 1
+
         if vote is not None:
-            if not a.trusted:
-                total_votes += 1
-                votes += a.weight * vote
-            else:
-                if vote >= VERDICT_MAYBE:
-                    high_confidence_malicious = True
+            total_weight += a.weight * VERDICT_MALICIOUS
+            total_votes += 1
+            votes += a.weight * vote
+
+            if a.trusted and vote >= VERDICT_MAYBE:
+                high_confidence_malicious = True
 
     if high_confidence_malicious:
+        # We assume the backends are conservative, so if we trust this backend
+        # has found sufficient evidence of malicious behavior, use this verdict
         log.info("Voted MALICIOUS because of positive high-confidence voter")
         return VERDICT_MALICIOUS
 
-    if not majority23(total_votes, total_voters):
+    if not pct_agree(0.5, total_votes, total_voters):
+        # If too many voters abstain, we can't reach a verdict.
         log.info("Voted DONTKNOW because there are missing voters (%s/%s)",
                  total_votes, total_voters)
         return VERDICT_DONTKNOW
 
-    if majority23(votes, total_weight):
-        log.info("Voted MALICIOUS because of majority low-confidence voters"
-                 " (%s/%s)", votes, total_weight)
+    if pct_agree(0.6666, votes, total_weight):
+        # 66.6% or higher
+        log.info("Voted MALICIOUS because of majority voters (%s/%s)", votes,
+                 total_weight)
         return VERDICT_MALICIOUS
 
-    log.info("Voted SAFE because of majority low-confidence voters (%s/%s)",
-             votes, total_weight)
-    return VERDICT_SAFE
+    if pct_agree(0.6666, total_weight - votes, total_weight):
+        # 33.3% or lower
+        log.info("Voted SAFE because of majority voters (%s/%s)", votes,
+                 total_weight)
+        return VERDICT_SAFE
+
+    log.info("Voted DONTKNOW because of voters didn't agree (%s/%s)", votes,
+             total_weight)
+    return VERDICT_DONTKNOW
 
 class VerdictComponent(Component):
     def __init__(self, parent):
+        self.artifact_interval = parent.artifact_interval
         self.expires = parent.config.expires
         self.url = parent.config.url
 
@@ -119,15 +123,12 @@ class VerdictComponent(Component):
                .filter_by(status=JOB_STATUS_NEW)]
         s.close()
         for a in avs:
-            dispatch_event("verdict_jobs", (None, a,))
+            dispatch_event("verdict_jobs", None, a)
 
     @event("verdict_update")
     def verdict_update(self, artifact_id):
         """Recompute final verdict for an artifact and trigger bounty settle if
-        needed.
-
-        Verdicts that were updated must belong to the same bounty and the same
-        artifact within that bounty."""
+        needed."""
         log.debug("Artifact #%s updated", artifact_id)
 
         s = DbSession()
@@ -145,24 +146,22 @@ class VerdictComponent(Component):
             verdict_map[verdict.backend] = verdict.verdict
 
         if not incomplete:
-            log.info("Verdict for artifact #%s can be made: %r", artifact_id,
-                     verdict_map)
+            log.debug("Verdict for artifact #%s can be made: %r", artifact_id,
+                      verdict_map)
             verdict = vote_on_artifact(verdict_map)
-            if verdict is not None:
-                log.info("Verdict: %r", verdict)
-                artifact.verdict = verdict
-                s.add(artifact)
-                s.commit()
-            else:
-                log.debug("Verdict for artifact #%s failed", artifact_id)
-                # TODO: move bounty to manual mode
-                bounty_id = None
+            log.debug("Verdict for artifact #%s: %r", artifact_id, verdict)
+            artifact.processed = True
+            artifact.processed_at = datetime.datetime.utcnow()
+            artifact.processed_at_interval = interval(time.time(), self.artifact_interval)
+            artifact.verdict = verdict
+            s.add(artifact)
+            s.commit()
         else:
             log.debug("Verdict for artifact #%s incomplete", artifact_id)
             bounty_id = None
         s.close()
         if bounty_id is not None:
-            dispatch_event("bounty_artifact_verdict", (bounty_id,))
+            dispatch_event("bounty_artifact_verdict", bounty_id)
 
     @event("verdict_jobs", serialize=False)
     def verdict_jobs(self, bounty_guid, artifact_id):
@@ -185,7 +184,7 @@ class VerdictComponent(Component):
         s.commit()
         s.close()
 
-        dispatch_event("verdict_job_submit", (artifact_id, submit))
+        dispatch_event("verdict_job_submit", artifact_id, submit)
 
     @event("verdict_job_submit", serialize=False)
     def verdict_job_submit(self, artifact_id, jobs):
@@ -248,7 +247,7 @@ class VerdictComponent(Component):
             s.close()
 
             if reeval:
-                dispatch_event("verdict_update", (artifact_id,))
+                dispatch_event("verdict_update", artifact_id)
 
 def reset_pending_jobs():
     """

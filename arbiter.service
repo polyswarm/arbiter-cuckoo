@@ -1,0 +1,14 @@
+[Unit]
+Description=Cuckoo Arbiter
+Requires=network.target local-fs.target
+
+[Service]
+User=arbiter
+Group=arbiter
+Environment=TMPDIR=/srv/arbiter/tmp
+ExecStart=/srv/arbiter/venv/bin/arbiter --config /srv/arbiter/arbiter.yaml run
+Type=simple
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

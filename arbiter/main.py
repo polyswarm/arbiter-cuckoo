@@ -14,15 +14,12 @@ import yaml
 
 from arbiter.arbiterd import Arbiterd
 from arbiter.config import ConfigFile
+from arbiter.const import JOB_STATUS_NAMES
 from arbiter.database import init_database
 
 default_conf_path = os.path.expanduser("~/.arbiter.yaml")
 
-def initialize(path, clean=False, level=logging.INFO):
-    logging.basicConfig(format="%(asctime)s %(name)s %(levelname)s: %(message)s",
-                        level=level)
-    logging.getLogger("urllib3").setLevel(logging.WARNING)
-
+def initialize(path, clean=False):
     config = ConfigFile(path)
     init_database(config.dburi, clean)
     return config
@@ -38,24 +35,38 @@ def cli(ctx, debug, clean, config):
     if not ctx.invoked_subcommand:
         raise ValueError()
 
-    if not os.path.exists(default_conf_path):
-        if config == default_conf_path and ctx.invoked_subcommand == "run":
-            # TODO: use explicit init function instead
-            with open(default_conf_path, "w") as fp:
-                yaml.dump(ConfigFile.defaults, fp)
-            sys.exit(
-                "Configuration file not found, dropped default "
-                "config to '%s'!" % default_conf_path
-            )
-        else:
-            raise ValueError("Configuration file not found")
-
     level = logging.DEBUG if debug else logging.INFO
-    ctx.meta["config"] = initialize(config, clean, level)
+    logging.basicConfig(format="%(asctime)s %(name)s %(levelname)s: %(message)s",
+                        level=level)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+
+    ctx.meta["config_path"] = config
+    if ctx.invoked_subcommand != "conf":
+        if not os.path.exists(config):
+            sys.exit("Configuration file %s not found" % conf)
+        ctx.meta["config"] = initialize(config, clean)
+
+@cli.command()
+@click.pass_context
+def conf(ctx):
+    config = ctx.meta["config_path"]
+    if os.path.exists(config):
+        sys.exit("Configuration file %s already exists" % config)
+    cfg = ConfigFile(None)
+    with open(config, "w") as fp:
+        yaml.dump(cfg.properties, fp)
+    print("Configuration file", config, "created")
 
 @cli.command()
 @click.pass_context
 def run(ctx):
+    import resource
+    try:
+        _, limit = resource.getrlimit(resource.RLIMIT_NOFILE)
+        resource.setrlimit(resource.RLIMIT_NOFILE, (limit, limit))
+    except ValueError:
+        pass
+
     p = Arbiterd(ctx.meta["config"])
     p.run()
 
@@ -83,8 +94,13 @@ def bounties():
 
     s = DbSession()
     for b in s.query(DbBounty).order_by(DbBounty.id).all():
-        print(b.guid, b.settle_block, str(b.truth_settled).ljust(5),
-              b.truth_value, "*" if b.truth_manual else "")
+        if not b.truth_value:
+            value = "-"
+        else:
+            value = "".join(str(v)[:1] for v in  b.truth_value)
+        print(b.guid, str(b.settle_block).ljust(4),
+              str(b.truth_settled).ljust(5), value.ljust(5),
+              "*" if b.truth_manual else "")
 
 @cli.command()
 def pending():
@@ -93,4 +109,9 @@ def pending():
     s = DbSession()
     #for av in s.query(DbArtifactVerdict).filter(DbArtifactVerdict.verdict.is_(None)).all():
     for av in s.query(DbArtifactVerdict).filter(DbArtifactVerdict.status != 0).all():
-        print("ID:", av.id, "AVID:", av.artifact_id, "Backend:", av.backend, "S:", av.status, "EXP:", av.expires)
+        status = JOB_STATUS_NAMES.get(av.status, av.status)
+        print("ID: %5s" % av.id,
+              "AVID: %5s" % av.artifact_id,
+              "Backend: %-10s" % av.backend,
+              "S: %-10s" % status,
+              "EXP:", av.expires)

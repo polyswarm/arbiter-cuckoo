@@ -24,6 +24,7 @@ class WSGIComponent(Component):
     def run(self):
         host, port = self.bind.split(":")
         log.info("Starting server for %r on %r", self.app, self.bind)
+        self.app.component = self
         kwargs = {}
         if self.ws:
             def app(environ, start_response):

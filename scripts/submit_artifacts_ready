@@ -1,9 +1,11 @@
 #!/usr/bin/env python
+# Copyright (C) 2018 Bremer Computer Security B.V.
+# This file is licensed under the MIT License, see also LICENSE.
 
-from argparse import ArgumentParser
-from requests import post
+import argparse
+import requests
 
-parser = ArgumentParser()
+parser = argparse.ArgumentParser()
 parser.add_argument('-a', '--artifact', default='1')
 parser.add_argument('-b', '--backend', default='cuckoo')
 parser.add_argument('-r', '--verdict', default='50')
@@ -14,9 +16,12 @@ if args.verdict in ('', 'none', 'null'):
 else:
     value = int(args.verdict)
 
-r = post('http://127.0.0.1:9080/artifact/%s' % args.artifact,
-         headers={'Content-Type': 'application/json',
-                  'Authorization': 'Bearer ' + args.backend},
-         json={'verdict_value': value})
+r = requests.post(
+    "http://127.0.0.1:9080/artifact/%s" % args.artifact,
+    headers={
+        "Content-Type": "application/json",
+        "Authorization": "Bearer %s" % args.backend,
+    }, json={"verdict_value": value}
+)
 r.raise_for_status()
 print(r.text)

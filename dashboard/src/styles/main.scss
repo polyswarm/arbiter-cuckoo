@@ -9,7 +9,8 @@
 @import "./lib/fontawesome/fa-light";
 
 // other npm imports
-@import '@fengyuanchen/datepicker/src/css/_datepicker';
+@import "@fengyuanchen/datepicker/src/css/_datepicker";
+@import 'bourbon';
 
 // base document setup
 body {
@@ -29,4 +30,5 @@ body {
 @import "components/grid";
 @import "components/table";
 @import "components/charts";
+@import "components/verdicts";
 @import "components/app";

@@ -17,7 +17,7 @@ from arbiter.events import Events, event_register_instance
 from arbiter.monitor import MonitorComponent
 from arbiter.polyswarm_api import PolySwarmAPI
 from arbiter.verdicts import VerdictComponent, reset_pending_jobs
-from arbiter.worker_api import APIComponent
+from arbiter.web_api import APIComponent
 
 from arbiter import ipfs
 
@@ -34,9 +34,12 @@ class Arbiterd(object):
     ]
 
     def __init__(self, config):
+        # For rate graph
+        self.artifact_interval = 600
+
         self.config = config
         self.host = config.host
-        self.polyswarm = PolySwarmAPI(config.host, config.addr, config.password)
+        self.polyswarm = PolySwarmAPI(config.host, config.addr)
         # For dashboard
         self.wallet = {}
 

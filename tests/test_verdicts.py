@@ -14,7 +14,7 @@ from arbiter.const import (
     JOB_STATUS_DONE, JOB_STATUS_NEW, JOB_STATUS_SUBMITTING, JOB_STATUS_PENDING
 )
 from arbiter.database import DbSession, DbBounty, DbArtifact, DbArtifactVerdict
-from arbiter.verdicts import majority23, vote_on_artifact, VerdictComponent
+from arbiter.verdicts import vote_on_artifact, VerdictComponent
 
 from utils import db_init, db_destroy, db_clear
 
@@ -35,6 +35,7 @@ class artifact:
         g = str(uuid.uuid4())
         b = DbBounty(guid=g,
                      expires=datetime.datetime.utcnow() + datetime.timedelta(days=1),
+                     num_artifacts=len(self.with_verdicts),
                      settle_block=1000)
         s.add(b)
         s.flush()
@@ -75,14 +76,9 @@ class Config:
     url = "http://localhost:59999/"
 
 class Parent:
+    artifact_interval = 900
     polyswarm = Holder()
     config = Config()
-
-def test_majority23():
-    assert not majority23(0, 0)
-    assert majority23(1, 1)
-    assert majority23(67, 100)
-    assert not majority23(66, 100)
 
 def test_vote_hc(caplog):
     caplog.set_level(logging.INFO)
@@ -116,11 +112,11 @@ def test_vote_hc(caplog):
     # No real majority
     assert vote_on_artifact({"modified": VERDICT_MALICIOUS,
                              "cape": VERDICT_SAFE,
-                             "clamav": VERDICT_MALICIOUS}) == VERDICT_SAFE
+                             "clamav": VERDICT_MALICIOUS}) is VERDICT_DONTKNOW
 
     assert vote_on_artifact({"modified": VERDICT_SAFE,
                              "cape": VERDICT_MALICIOUS,
-                             "clamav": VERDICT_MALICIOUS}) == VERDICT_MALICIOUS
+                             "clamav": VERDICT_MALICIOUS}) is VERDICT_MALICIOUS
 
 @mock.patch("arbiter.verdicts.dispatch_event")
 def test_expire_verdicts(dispatch_event, db):
@@ -175,7 +171,7 @@ def test_verdict_update(dispatch_event, db):
                                       "verdict": VERDICT_SAFE}})
     with complete as x:
         v.verdict_update(x["artifact_id"])
-        dispatch_event.assert_called_with("bounty_artifact_verdict", (x["bid"],))
+        dispatch_event.assert_called_with("bounty_artifact_verdict", x["bid"])
 
 @mock.patch("arbiter.verdicts.dispatch_event")
 def test_verdict_jobs(dispatch_event, db):

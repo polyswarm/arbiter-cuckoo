@@ -5,14 +5,20 @@ import moment from 'moment';
 import Handlebars from 'handlebars';
 import pattern from 'patternomaly';
 import '@fengyuanchen/datepicker';
+import PageSwitcher from './lib/page-switcher';
 
 // hold some global params for the app
 const Application = {
   data: {},
   datepickerActive: false,
-  artifactAPIUrl: 'http://bak.cuckoo.sh:9080/dashboard/charts/artifacts',
+  // artifactAPIUrl: 'http://bak.cuckoo.sh:9080/dashboard/charts/artifacts',
+  artifactAPIUrl: `http://${window.location.host}/dashboard/charts/artifacts`,
+  chartInitialized: false,
+  chart: undefined,
+  settledBounties: [],
   noop: () => new Function(),
   templates: {
+
     // renders table overview of backends
     backends: data => Handlebars.compile(`
       <table class="table content-fit">
@@ -36,6 +42,7 @@ const Application = {
         </tbody>
       </table>
     `)(data),
+
     // alternative template that just displays machine info
     performanceDisplay: data => Handlebars.compile(`
       <div class="erector-container">
@@ -61,7 +68,94 @@ const Application = {
         </div>
         <h3>{{name}}</h3>
       </div>
+    `)(data),
+
+    // bounty UI
+    verdictBounty: data => Handlebars.compile(`
+      <article class="verdict-item" data-bounty-guid="{{guid}}">
+        <header>
+          <h2><strong>Bounty</strong> {{short-uid guid 5}}</h2>
+          <ul>
+            <li class="bounty-amount">{{amount}} <strong>NCT</strong></li>
+            <li class="bounty-created">{{moment-from created}}</li>
+          </ul>
+        </header>
+        <section class="verdict-artifacts">
+          <ul class="summary-list">
+            <li>{{num_artifacts}} artifacts</li>
+            <li>{{#if truth_settled}}Settled{{else}}Unsettled{{/if}}</li>
+          </ul>
+          <div class="hidden-inactive" data-populate="artifacts">
+            <!-- populates artifactVerdict -->
+          </div>
+        </section>
+        <footer>
+          <a href="load:{{guid}}">Artifact verdicts</a>
+        </footer>
+      </article>
+    `)(data),
+
+    // artifact verdict UI
+    verdictArtifacts: data => Handlebars.compile(`
+      {{#each artifacts}}
+        <article class="artifact-details">
+          <header class="artifact-details-header">
+            <div class="icon"></div>
+            <div>
+              <h3>{{name}}</h3>
+              <ul class="backend-resource-list">
+                {{#each verdicts}}
+                  <li>
+                    <a href="{{meta.href}}" target="_blank"><i class="fas fa-file-contract"></i> {{@key}}</a>
+                    {{{verdict-badge verdict}}}
+                  </li>
+                {{/each}}
+              </ul>
+            </div>
+          </header>
+          <h4>Expert Verdicts:</h4>
+          <ul class="expert-verdicts">
+          {{#each expertOpinions}}
+            <li>
+              <div>
+                <h5>{{author}}</h5>
+                <p>{{metadata}}</p>
+              </div>
+              <div class="verdict-badge-holder">
+                {{{verdict-badge verdicts}}}
+              </div>
+            </li>
+          {{else}}
+            <li><em>No opinions</em></li>
+          {{/each}}
+          </ul>
+          <ul class="verdict-artifact" data-artifact-verdict="{{hash}}">
+            <li>
+              <label for="select-{{hash}}-unsafe">
+                <input type="radio" name="verdict-{{hash}}" id="select-{{hash}}-unsafe" value="true" />
+                <p>unsafe</p>
+              </label>
+            </li>
+            <li>
+              <label for="select-{{hash}}-safe">
+                <input type="radio" name="verdict-{{hash}}" id="select-{{hash}}-safe" value="false" />
+                <p>safe</p>
+              </label>
+            </li>
+          </ul>
+        </article>
+      {{/each}}
+      {{#unless truth_settled}}
+        <p class="explanatory">Select artifacts to mark safe or unsafe. Then click submit to settle this bounty.</p>
+        <ul class="button-list">
+          <li><button class="grey" data-ignore-bounty>Ignore</button></li>
+          <li><button class="purple" type="submit" data-verdict-bounty>Submit</button></li>
+        </ul>
+      {{else}}
+        <p class="explanatory">You settled </p>
+      {{/unless}}
     `)(data)
+
   }
 };
 
@@ -71,6 +165,28 @@ Handlebars.registerHelper('percentage', (part, total) => {
   if(ret >= 90) ret = `<span class="danger">${ret}</span>`;
   return new Handlebars.SafeString(`${ret}%`);
 });
+
+// handlebars method to shorten an id
+Handlebars.registerHelper('short-uid', (uid, len = 3) => {
+  return new Handlebars.SafeString(`${uid.substring(0, len)}...${uid.substring(uid.length-len, uid.length)}`);
+});
+
+// handlebars method to display dates as '... from ...'
+Handlebars.registerHelper('moment-from', (date = new Date()) => new Handlebars.SafeString(moment(date).fromNow()))
+
+// handlebars method to render 'safe' / 'unsafe' badges in the ui
+Handlebars.registerHelper('verdict-badge', (verdict = null) => {
+  if(verdict instanceof Array) {
+    return new Handlebars.SafeString(`<span class="verdict-badge ${verdict[0] == true ? 'unsafe' : 'safe'}"></span>`);
+  } else if(verdict == null) {
+    return new Handlebars.SafeString(`<span class="verdict-badge">unknown</span>`);
+  } else if (verdict < 50) {
+    return new Handlebars.SafeString(`<span class="verdict-badge safe"></span>`)
+  } else {
+    return new Handlebars.SafeString(`<span class="verdict-badge unsafe"></span>`)
+  }
+
+})
 
 // bouncy bouncy microplugin
 $.fn.Bounce = function(config = {}) {
@@ -98,6 +214,21 @@ $.fn.Bounce = function(config = {}) {
     }, options.speed);
   }, options.delay);
 }
+
+// ajax request helper as a promise
+let request = (url = '', type = 'GET', data = {}) => new Promise((resolve, reject) => {
+
+  // stringify data before send
+  if(data) data = JSON.stringify(data);
+
+  $.ajax({
+    url, type, data,
+    dataType: 'json',
+    contentType: 'application/json',
+    success: response => resolve(response),
+    error: errors => reject(errors)
+  });
+});
 
 /*
   updates the wallet amount
@@ -200,30 +331,34 @@ function initializeArtifactChart() {
   let $canvas = $('<canvas width="100%" height="100%" />');
   $el.find('section').append($canvas);
 
-  let renderChart = data => {
+  let renderChart = (data) => {
 
     let ctx = $canvas[0].getContext('2d');
 
     data = data.map(point => {
       return {
-        x: moment.unix(point[0]).toISOString(),
+        x: moment.unix(point[0]),
         y: point[1]
       }
     });
 
-    return new Chart(ctx, {
+    let c = new Chart(ctx, {
       type: 'line',
       data: {
         datasets: [{
           data: data,
-          // backgroundColor: pattern.draw('diagonal', 'rgba(109,85,134,.6)'),
-          backgroundColor: 'rgba(63,16,107,.7)',
-          pointBackgroundColor: '#21073A',
+          backgroundColor: 'rgba(63,16,107,.1)',
+          borderColor: 'rgba(63,16,107,.7)',
+          pointBackgroundColor: 'rgba(63,16,107, .5)',
           pointHighlightFill: '#FFF',
           pointHighlightStroke: '#DDD',
+          pointHitRadius: 10,
           pointBorderColor: '#21073A',
           pointStyle: 'circle',
-          pointRadius: 1
+          pointRadius: 3,
+          pointHoverRadius: 5,
+          pointHoverBackgroundColor: '#fff',
+          pointHoverBorderWidth: 4
         }]
       },
       options: {
@@ -241,7 +376,7 @@ function initializeArtifactChart() {
               }
             },
             scaleLabel: {
-              display: false,
+              display: false
             }
           }],
           yAxes: [{
@@ -269,18 +404,280 @@ function initializeArtifactChart() {
               return `${total} artifacts processed at ${date}`;
             }
           }
-        }
+        },
+        elements: {
+          line: {
+            tension: 0.2,
+            cubicInterpolationMode: 'monotone'
+          }
+        },
+        hover: {
+          onHover: function(e) {
+             var point = this.getElementAtEvent(e);
+             if (point.length) e.target.style.cursor = 'pointer';
+             else e.target.style.cursor = 'default';
+          }
+       }
       }
+    });
+
+    return c;
+
+  }
+
+  let updateChart = () => {
+    $.get(Application.artifactAPIUrl, response => {
+
+      if(!Application.chartInitialized) {
+        Application.chart = renderChart(response.data);
+        Application.chartInitialized = true;
+
+        if($el.hasClass('content-loading'))
+          $el.removeClass('content-loading');
+
+        return;
+      }
+
     });
   }
 
-  $.get(Application.artifactAPIUrl, response => {
+  updateChart();
 
-    renderChart(response.data);
+}
 
-    if($el.hasClass('content-loading'))
-      $el.removeClass('content-loading');
+/*
+  Generic handler for settling a bounty
+ */
+function bountySettleHandler(element, bounty) {
+
+  if(!element) return;
+
+  // action button
+  let parent = element.hasClass('verdict-item') ? element : element.parents('.verdict-item');
+  let submit = parent.find('button[data-verdict-bounty]');
+  let ignore = parent.find('button[data-ignore-bounty]');
+
+  let stateHandlers = {
+    freeze: () => {
+      // disables inputs / buttons
+      parent.find('.verdict-artifact label').addClass('disabled');
+      parent.find('.verdict-artifact label > input').prop('disabled', true);
+      $(submit, ignore).prop('disabled', true);
+    },
+    unfreeze: () => {
+      // enables inputs/buttons
+      parent.find('.verdict-artifact label').removeClass('disabled');
+      parent.find('.verdict-artifact label > input').prop('disabled', false);
+      $(submit, ignore).prop('disabled', false);
+    },
+    done: () => {
+      // pre-action handler
+      parent.slideUp();
+      $("#total-pending")
+    },
+    setPending: () => {
+
+      parent.appendTo("#pending-bounties"); // swaps element to bounties-pending column
+
+      // sets the element to pending
+      parent.find('.button-list').hide();
+      parent.find('.button-list').after($("<p>Bounty is settling...</p>"));
+
+      let newTotalManual = parseInt($("#bounty-verdicts").find('#total-manual').text())-1;
+      let newTotalPending = parseInt($("#bounty-verdicts").find('#total-pending').text())+1;
+
+      $("#bounty-verdicts").find("#total-manual").text(newTotalManual);
+      $("#bounty-verdicts").find("#total-pending").text(newTotalPending);
+    },
+    error: () => {
+      // displays an error if there is an error
+    }
+  }
+
+  // add bounty guid to the
+
+  // when the submit button is clicked, collect all results for the loaded
+  // artifacts based on their occurance in the bounty to sent a list back
+  // with the verdicts
+  submit.bind('click', e => {
+
+    let body = {
+      verdicts: []
+    };
+
+    for(let a in bounty.artifacts) {
+      let hash = bounty.artifacts[a].hash;
+      let verdict = element.find(`input[name="verdict-${hash}"]:checked`);
+      body.verdicts.push(verdict.val() == "true");
+    };
+
+    // freeze ui
+    stateHandlers.freeze();
+
+    request(`/dashboard/bounties/${bounty.guid}`, 'POST', body).then(response => {
+      // store this bounty
+      Application.settledBounties.push({
+        guid: bounty.guid,
+        callback: () => {
+          stateHandlers.done();
+          $("#total-pending").text(parseInt($("#bounty-verdicts").find('#total-pending').text())-1);
+        }
+      });
+      stateHandlers.setPending();
+      // stateHandlers.unfreeze();
+    }).catch(err => console.error(err));
+
   });
+
+}
+
+/*
+  A centralized function to format the artifact details stream
+  - note => the input == the output
+ */
+function formatArtifactVerdicts(bounty) {
+  // create list of relevant expert opinions to pass
+  // to the template
+  for(let i in bounty.artifacts) {
+    let item = bounty.artifacts[i];
+    item.expertOpinions = [];
+    for(let assertion of bounty.assertions) {
+      if(!assertion.mask[i]) continue;
+      item.expertOpinions.push(assertion);
+    }
+  }
+  return bounty;
+}
+
+/*
+  Handler for showing/hiding artifact data
+ */
+function loadBountyArtifacts(guid, target) {
+
+  let $artifacts = target.find('.verdict-artifacts');
+
+  request(`/dashboard/bounties/${guid}`).then(data => {
+
+    data = formatArtifactVerdicts(data);
+
+    console.log(data);
+
+    if(!$artifacts.hasClass('shown')) {
+      let html = $(Application.templates.verdictArtifacts(data));
+      target.find('[data-populate="artifacts"]').html(html);
+      bountySettleHandler(html, data);
+    }
+
+    $artifacts.toggleClass('shown');
+    target.find('footer > a[href^="load:"]').text($artifacts.hasClass('shown') ? 'Cancel' : 'Artifact verdicts');
+
+  }).catch(err => console.error(err)); // <== do not forget to handle this in the frontend!
+}
+
+/*
+  A function to spawn a bounty item
+ */
+function createBounty(bounty) {
+  return {
+    bounty, // stores the data object (obj.bounty)
+    render: function() {
+      return $(Application.templates.verdictBounty(this.bounty));
+    }, // renders the bounty html
+    init: function(container) {
+
+      let el = this.render();
+
+      if(container) {
+
+        container.append(el);
+
+        el.find('a[href^="load:"]').bind('click', e => {
+          e.preventDefault();
+          let guid = $(e.currentTarget).attr('href').split(':')[1];
+          if(!guid) return false;
+          loadBountyArtifacts(guid, el);
+        });
+
+      }
+
+      return this;
+    } // initializes everything
+  }
+}
+
+/*
+  Initializes the verdict UI
+ */
+function initializeVerdicts(manual, pending) {
+
+  let bountyContainer = $("#bounty-verdicts");
+
+  let bounties = {
+    manual: [],
+    pending: []
+  }
+
+  for(let bounty in manual)
+    bounties.manual.push(createBounty(manual[bounty]));
+
+  for(let bounty in pending)
+    bounties.pending.push(createBounty(pending[bounty]));
+
+  // populate list-totals
+  bountyContainer.find("#total-manual").text(manual.length);
+  bountyContainer.find("#total-pending").text(pending.length);
+
+  for(let b in bounties.manual)
+    bounties.manual[b].init(bountyContainer.find('#manual-bounties'));
+
+  for(let b in bounties.pending)
+    bounties.pending[b].init(bountyContainer.find('#pending-bounties'));
+
+  //
+  // // generate html
+  // let $manualBounties = $(manual.map(item => Application.templates.verdictBounty(item)).join(""));
+  // let $pendingBounties = $(pending.map(item => Application.templates.verdictBounty(item)).join(""));
+  //
+  // // append html
+  // bountyContainer.find('#manual-bounties').html($manualBounties);
+  // bountyContainer.find('#pending-bounties').html($pendingBounties);
+  //
+  // // bind the click listener to toggle the detailed verdict view
+  // bountyContainer.find('.verdict-item > footer > a').bind('click', e => {
+  //
+  //   e.preventDefault();
+  //   let link = $(e.currentTarget);
+  //   let guid = link.attr('href').split(':')[1];
+  //   let target = link.parents(".verdict-item").find('.verdict-artifacts');
+  //
+  //   if(!guid) {
+  //     console.log('Missing bounty GUID! Content will not load.');
+  //     return false;
+  //   }
+  //
+  //   request(`/dashboard/bounties/${guid}`).then(data => {
+  //
+  //     data = formatArtifactVerdicts(data);
+  //
+  //     if(!target.hasClass('shown')) {
+  //       let html = $(Application.templates.verdictArtifacts(data));
+  //       target.find('[data-populate="artifacts"]').append(html);
+  //       bountySettleHandler(html, data);
+  //     } else {
+  //       target.find('[data-populate="artifacts"]').empty();
+  //     }
+  //
+  //     target.toggleClass('shown');
+  //     link.text(target.hasClass('shown') ? 'Cancel' : 'Artifact verdicts');
+  //
+  //   }).catch(err => console.error(err)); // <== do not forget to handle this in the frontend!
+  //
+  // });
+
+  // mock for aesthethics
+  setTimeout(() => {
+    bountyContainer.removeClass('content-loading');
+  }, 1000);
 
 }
 
@@ -313,16 +710,17 @@ export default function DomReady(app = {}) {
 
     let socketHook = message => {
 
-      // message = JSON.parse(message);
+      // in case of message being a string, parse it to json
+      if(typeof message === 'string')
+        message = JSON.parse(message);
+
       let type = message.msg;
 
       switch(type) {
-
         // if the message is for the wallet, update the wallet value
         case 'wallet':
           updateWalletAmount(message.wallet);
         break;
-
         // if any of these are the message, update the corresponding element
         case 'counter-bounties-settled':
         case 'counter-artifacts-processing':
@@ -330,13 +728,26 @@ export default function DomReady(app = {}) {
         case 'counter-errors':
           updateCounter(type, message[type]);
         break;
-
         // creates visual reflection of backend performance insights
         case 'backends':
           tablizeBackends(message);
           // updatePerformanceCharts(message);
         break;
-
+        // when a pending bounty is settled, remove it from the UI
+        case 'bounties-settled':
+          let stopLoop = false;
+          let targetBounty = message['bounties-settled'].guid;
+          for(let b in Application.settledBounties) {
+            if(stopLoop) return;
+            if(Application.settledBounties[b].guid == targetBounty) {
+              console.log(`Completed bounty ${targetBounty}`);
+              if(Application.settledBounties[b].callback)
+                Application.settledBounties[b].callback();
+              Application.settledBounties.splice(b, 1);
+              stopLoop = true;
+            }
+          }
+        break;
       }
     }
 
@@ -354,5 +765,11 @@ export default function DomReady(app = {}) {
 
   // initialize the chart for the processed artifacts
   initializeArtifactChart();
+
+  // trigger the verdict system init
+  initializeVerdicts(Application.data['manual-bounties'], Application.data['pending-bounties']);
+
+  // init the page-switcher modules automagically
+  PageSwitcher.findAndBind($(".page-switcher"));
 
 }

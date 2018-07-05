@@ -13,15 +13,13 @@ class PolySwarmError(Exception):
     def __str__(self):
         return '%s %s %s' % (self.status, self.message, self.reason)
 
+class PolySwarmNotFound(PolySwarmError):
+    pass
+
 class PolySwarmAPI:
-    def __init__(self, host, account, password):
+    def __init__(self, host, account):
         self.host = host
         self.account = account
-        self.password = password
-
-    def account_unlock(self):
-        return self(requests.post, "accounts/%s/unlock" % self.account,
-                    {"password": self.password})
 
     def balance(self, kind, account=None):
         if not account:
@@ -42,7 +40,9 @@ class PolySwarmAPI:
     def __call__(self, method, path, args=None):
         resp = method("http://%s/%s" % (self.host, path), json=args)
         r = resp.json()
-        if resp.status_code != 200:
+        if resp.status_code == 404:
+            raise PolySwarmNotFound(resp.status_code, r.get("status"), resp.reason)
+        elif resp.status_code != 200:
             raise PolySwarmError(resp.status_code, r.get("status"), resp.reason)
         if r.get("status") != "OK":
             raise PolySwarmError(resp.status_code, r.get("status"))

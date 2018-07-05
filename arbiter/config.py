@@ -1,9 +1,13 @@
 # Copyright (C) 2018 Bremer Computer Security B.V.
 # This file is licensed under the MIT License, see also LICENSE.
 
+import base64
 import datetime
+import logging
 import os.path
 import yaml
+
+log = logging.getLogger(__name__)
 
 def repr_timedelta(dumper, data):
     # Fun for days
@@ -23,14 +27,29 @@ class ConfigFile(object):
         "url": "http://localhost:9080",
         "host": "localhost:31337",
         "addr": 0,
+        "dashboard_password": "",
+        "api_secret": "",
         "artifacts": "~/.artifacts",
         "dburi": "postgresql://arbiter:arbiter@localhost/arbiter",
         "expires": datetime.timedelta(days=5),
         "analysis_backends": {},
+        "trusted_experts": [],
     }
 
-    def __init__(self, path):
-        self.properties = yaml.safe_load(open(path, "rb")) or {}
+    def __init__(self, path=None):
+        if not path:
+            self.properties = {}
+            self.properties.update(self.defaults)
+        else:
+            self.properties = yaml.safe_load(open(path, "rb")) or {}
+            for k, v in self.defaults.items():
+                if k not in self.properties:
+                    self.properties[k] = v
+        for k in ("dashboard_password", "api_secret"):
+            if not self.properties.get(k):
+                log.warning("Please configure `%s`!. Creating random secret...", k)
+                pw = base64.b64encode(os.urandom(16)).decode("utf8").rstrip("=")
+                self.properties[k] = pw
 
     def __getattr__(self, name):
         if name in self.properties:
@@ -38,6 +57,10 @@ class ConfigFile(object):
         if name in self.defaults:
             return self.defaults[name]
         raise AttributeError(name)
+
+    @property
+    def api_secret(self):
+        return self.__getattr__("api_secret").encode("utf8")
 
     @property
     def artifacts(self):

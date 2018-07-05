@@ -28,15 +28,18 @@ class Holder:
 
 class Config:
     expires = datetime.timedelta(days=5)
+    trusted_experts = []
 
 class Parent:
     polyswarm = Holder()
     config = Config()
 
-def _create_bounty(guid, truth_value=None, settled=False, n=0):
+def _create_bounty(guid, truth_value=None, settled=False, n=0, assertions=None):
     s = DbSession()
     b = DbBounty(
         guid=guid,
+        num_artifacts=n,
+        assertions=n,
         expires=datetime.datetime.utcnow(),
         truth_value=truth_value,
         truth_settled=settled,
@@ -118,40 +121,43 @@ def test_settle_manual(db):
         db_clear()
 
 @mock.patch("arbiter.bounties.dispatch_event")
-def test_check_settle(dispatch_event, db):
+def test_resubmit_pending_settle(dispatch_event, db):
     guid = "dda16db6-89eb-453b-8d0a-abababababab"
     truth_value = "[true]"
-    _create_bounty(guid, truth_value)
+    _create_bounty(guid, truth_value, assertions=[])
 
     b = BountyComponent(Parent())
 
     try:
-        b.check_settle()
+        b.resubmit_pending_settle()
         assert not dispatch_event.called
 
         b.cur_block = 1000
-        b.check_settle()
+        b.resubmit_pending_settle()
         assert not dispatch_event.called
 
         b.cur_block = 1001
-        b.check_settle()
-        dispatch_event.assert_called_with("settle_bounty_attempt",
-                                          (guid, truth_value))
+        b.resubmit_pending_settle()
+        dispatch_event.assert_called_with("bounty_settle_attempt",
+                                          guid, truth_value)
     finally:
         db_clear()
 
-@mock.patch("arbiter.bounties.dispatch_event")
-def test_block_update(dispatch_event, db):
-    b = BountyComponent(Parent())
-    assert b.cur_block is None
-    b.block_updated(1001)
-    dispatch_event.assert_called_with("check_settle")
-    dispatch_event.reset_mock()
-    b.block_updated(1000)
-    assert b.cur_block == 1001
-    assert not dispatch_event.called
+#@mock.patch("arbiter.bounties.dispatch_event")
+#def test_block_updated(dispatch_event, db):
+#    b = BountyComponent(Parent())
+#    assert b.cur_block is None
+#    b.block_updated(1001)
+#    dispatch_event.assert_called_with("bounty_check_assertions")
+#    dispatch_event.reset_mock()
+#    b.block_updated(1000)
+#    assert b.cur_block == 1001
+#    assert not dispatch_event.called
 
-def test_settle_bounty_attempt(db):
+def test_bounty_check_assertions(db):
+    pass
+
+def test_bounty_settle_attempt(db):
     b = BountyComponent(Parent())
     b.polyswarm.settle_bounty = mock.Mock()
     b.polyswarm.bounty_assertions = mock.Mock()

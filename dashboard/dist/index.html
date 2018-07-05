@@ -43,7 +43,7 @@
       <!-- Application body -->
       <section class="app-body grid" role="grid">
         <!-- All-time process info -->
-        <div class="content content-loading" role="gridcell" id="processes-archive">
+        <div class="content content-loading" role="gridcell" id="processes-archive" data-grid-area="header">
           <header>
             <div>
               <h2>Processed artifacts</h2>
@@ -79,7 +79,7 @@
           </div>
         </div>
         <!-- Current process info -->
-        <div class="content content-loading" role="gridcell" id="current-processes">
+        <div class="content content-loading" role="gridcell" id="current-processes" data-grid-area="left">
           <header>
             <h2>Current processes</h2>
           </header>
@@ -87,7 +87,7 @@
 
             <div class="hexagon-field-inline" id="counter-artifacts-processing">
               <span data-svg-src="svg/hexagon-text.svg" data-svg-w="74" data-svg-h="66">24</span>
-              <p>artifacts being analyzed</p>
+              <p>Artifacts being analyzed</p>
               <span class="hexagon-field-end" data-svg-src="svg/hexagon-rect-r-alt.svg" data-svg-w="24" data-svg-h="65"></span>
             </div>
 
@@ -117,7 +117,7 @@
           </div>
         </div>
         <!-- Machine inspector -->
-        <div class="content content-loading" role="gridcell" id="machine-status">
+        <div class="content content-loading" role="gridcell" id="machine-status" data-grid-area="content">
           <header>
             <h2>Connected analysis backends</h2>
           </header>
@@ -128,18 +128,41 @@
             <i></i>
           </div>
         </div>
-        <!-- Memory info -->
-        <!-- <div class="content content-loading" role="gridcell" id="memory-info">
+        <!-- Bounty view -->
+        <div class="content content-loading" role="gridcell" id="bounty-verdicts" data-grid-area="sidebar">
           <header>
-            <h2>Usage statistics</h2>
+            <h2><i class="fa fa-gavel"></i> Bounties &amp; Verdicts</h2>
           </header>
-          <section></section>
+          <section class="verdict-container page-switcher">
+            <nav class="verdict-nav page-switcher__nav">
+              <ul>
+                <li>
+                  <a class="active" href="manual-bounties">Manual <span id="total-manual">0</span></a>
+                </li>
+                <li>
+                  <a href="pending-bounties">Pending <span id="total-pending">0</span></a>
+                </li>
+              </ul>
+            </nav>
+
+            <div class="verdict-feed page-switcher__pages">
+              <div class="verdict-feed-wrap active" id="manual-bounties">
+                <!-- rendered internally -->
+              </div>
+              <div class="verdict-feed-wrap" id="pending-bounties">
+                <!-- rendered internally -->
+              </div>
+            </div>
+
+            <footer>&nbsp;</footer>
+          </section>
           <div class="loading-component">
             <i></i>
             <i></i>
             <i></i>
           </div>
-        </div> -->
+        </div>
+
       </section>
 
     </main>

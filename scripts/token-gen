@@ -1,0 +1,25 @@
+#!/usr/bin/env python
+# Copyright (C) 2018 Bremer Computer Security B.V.
+# This file is licensed under the MIT License, see also LICENSE.
+
+import argparse
+import os.path
+import time
+import yaml
+
+from arbiter.utils import generate_token
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Set token for backend.")
+    parser.add_argument("--config", default="~/.arbiter.yaml")
+    args = parser.parse_args()
+
+    cfg = yaml.safe_load(open(os.path.expanduser(args.config)))
+
+    secret = cfg["api_secret"].encode("utf8")
+    ab = cfg.setdefault("analysis_backends", {})
+    t = int(time.time())
+    t -= t % 30
+    for backend in ab.keys():
+        token = generate_token(secret, backend, t)
+        print(backend, "=", token)

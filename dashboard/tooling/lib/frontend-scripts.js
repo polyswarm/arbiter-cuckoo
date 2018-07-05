@@ -22,7 +22,8 @@ let messages = {
 let createConfig = (options = {}) => Object.assign({
   path: null,
   file: null,
-  output: null
+  output: null,
+  notifications: true
 }, options);
 
 /*
@@ -77,12 +78,15 @@ function watch(options = {}) {
   let {
     path,
     file,
-    output
+    output,
+    notifications
   } = createConfig(options);
 
   return chokidar.watch(util.cwd(path)).on('change', (event, p) => {
     transpile(options).then(result => {
       // cycle done
+      if(notifications)
+        util.notify('Babel transpiled');
     }, err => {
       console.log(err);
     })

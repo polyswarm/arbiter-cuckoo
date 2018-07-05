@@ -20,9 +20,20 @@ class Modified(AnalysisBackend):
         body["custom"] = artifact.url
         files = {"file": (artifact.name, artifact.fetch())}
         req = requests.post(self.cuckoo_url + "v1/tasks/create/file",
+                            headers={"X-Arbiter": self.name},
                             data=body, files=files)
         req.raise_for_status()
         resp = req.json()
         if "task_ids" not in resp:
             raise ValueError(resp)
         return {"task_ids": resp["task_ids"]}
+
+    def health_check(self):
+        req = requests.get(self.cuckoo_url + "v1/cuckoo/status")
+        req.raise_for_status()
+        data = req.json()
+        report = {
+            "machinestotal": data["machines"]["total"],
+            "machinesused": data["machines"]["total"] - data["machines"]["available"],
+        }
+        return report

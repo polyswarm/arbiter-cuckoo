@@ -23,8 +23,13 @@ class DbBounty(Base):
     guid = Column(UUID, unique=True)
     created = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
     expires = Column(DateTime, nullable=False)
+    amount = Column(String, nullable=False)
+    author = Column(String, nullable=False)
+    num_artifacts = Column(Integer, nullable=False)
 
-    # Our ground truth as pre-serialized JSON
+    # Our ground truth as pre-serialized JSON, must only be set when ready to
+    # settle.
+    # TODO: maybe just a bit string or string with T/F
     truth_value = Column(JsonString, nullable=True)
 
     # Whether submission has been succesful
@@ -37,11 +42,14 @@ class DbBounty(Base):
     # Also the time at which assertions must become available
     settle_block = Column(Integer, nullable=False)
 
+    # Cache assertions for UI
+    assertions = Column(JsonString, nullable=True)
+
     artifacts = relationship("DbArtifact",
                              backref=backref("bounty", lazy="noload"))
 
 # Is-settled and current-block check
-Index('ix_bounty_settle', DbBounty.truth_settled, DbBounty.settle_block)
+Index("ix_bounty_settle", DbBounty.truth_settled, DbBounty.settle_block)
 
 class DbArtifact(Base):
     """An artifact with one or more analysis results"""
@@ -53,6 +61,15 @@ class DbArtifact(Base):
                        nullable=False)
     hash = Column(String(255))
     name = Column(String(255))
+
+
+    # Set if processing is complete,
+    processed = Column(Boolean, nullable=False, default=False, index=True)
+
+    # TODO: create an index or view on date_trunc for the dashboard graph
+    processed_at = Column(DateTime, nullable=True)
+    processed_at_interval = Column(Integer, nullable=True, index=True)
+
     verdict = Column(Integer, nullable=True)
 
     verdicts = relationship("DbArtifactVerdict",

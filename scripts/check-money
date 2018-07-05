@@ -1,0 +1,38 @@
+#!/usr/bin/env python
+# Copyright (C) 2018 Bremer Computer Security B.V.
+# This file is licensed under the MIT License, see also LICENSE.
+
+from __future__ import print_function
+
+import requests
+
+def _call(method, host, path, args=None, files=None):
+    if files is not None:
+        assert args is None
+    r = method("http://%s/%s" % (host, path), json=args, files=files)
+    r.raise_for_status()
+    r = r.json()
+    if r.get("status") != "OK":
+        raise ValueError(r)
+    return r.get("result")
+
+get = lambda h, p, a=None, files=None: _call(requests.get, h, p, a, files)
+post = lambda h, p, a=None, files=None: _call(requests.post, h, p, a, files)
+
+class accounts:
+    arbiter = "127.0.0.1:31331"
+    expert = "127.0.0.1:31332"
+    user = "127.0.0.1:31333"
+
+moneys = [
+    ("owner", "0xaf8302a3786a35abeddf19758067adc9a23597e5"),
+    ("arbiter", "0x1f50cf288b5d19a55ac4c6514e5ba6a704bd03ec"),
+    ("expert", "0xe23bc28b143259aa0ce9c9c949f882c6acb9822b"),
+    ("user", "0xd6625a8a1a8a3bdb953d20a9310333d362b137da"),
+]
+
+if __name__ == "__main__":
+    for n, a in moneys:
+        eth = get(accounts.user, "accounts/%s/balance/eth" % a)
+        nct = get(accounts.user, "accounts/%s/balance/nct" % a)
+        print(n.ljust(8), nct, eth)

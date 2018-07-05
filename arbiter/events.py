@@ -23,16 +23,16 @@ class Events(Component):
         obj = json.loads(message)
 
         if obj["event"] == "bounty":
-            dispatch_event("bounty", (obj["data"],))
+            dispatch_event("bounty", obj["data"])
 
         elif obj["event"] == "block":
-            dispatch_event("block", (obj["data"]["number"],))
+            dispatch_event("block", obj["data"]["number"])
 
         elif obj["event"] == "assertion":
-            dispatch_event("assertion", (obj["data"],))
+            dispatch_event("assertion", obj["data"])
 
         elif obj["event"] == "verdict":
-            dispatch_event("verdict", (obj["data"],))
+            dispatch_event("verdict", obj["data"])
 
         else:
             log.debug("Unhandled event: %r", obj)
@@ -57,11 +57,11 @@ class Events(Component):
             except:
                 pass
             log.info("Disconnected")
-            gevent.sleep(20)
+            gevent.sleep(3)
 
     def pending_bounties(self):
         for bounty in self.polyswarm.pending_bounties():
-            dispatch_event("bounty", (bounty,))
+            dispatch_event("bounty", bounty)
 
 class EventParallel:
     def __init__(self, event, first):
@@ -133,13 +133,13 @@ def event_register_instance(obj):
         if periodicx is not None:
             gevent.spawn(run_periodicx, v, periodicx)
 
-def dispatch_event(event_name, args=(), kwargs=None):
-    lst = registered_events.get(event_name, [])
+def dispatch_event(__event_name, *args, **kwargs):
+    lst = registered_events.get(__event_name, [])
     for f in lst:
         try:
             f(args, kwargs or {})
         except:
-            log.exception("%s: Failed call %s:", event_name, f)
+            log.exception("%s: Failed call %s:", __event_name, f)
 
 def run_periodic(func, delay):
     while True:

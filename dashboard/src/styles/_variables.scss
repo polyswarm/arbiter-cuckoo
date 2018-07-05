@@ -5,15 +5,43 @@
   align-items: center;
 }
 
-// text field reset
-%reset-text-field {
+// text field reset => %reset-text-field will be replaced by %reset-input
+%reset-text-field,
+%reset-input {
   -webkit-appearance: none;
   display: block;
   width: 100%;
   border: 0;
   outline: 0;
   background: transparent;
+  box-shadow: 0;
   &:focus { outline: none; }
+}
+
+%flex-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+}
+
+%flex-list-column {
+  @extend %flex-list;
+  flex-direction: column;
+}
+
+// smart mixin to get the best out of { text-decoration: underline }
+@mixin underline($color: inherit, $thickness: 1px, $offset: 3px) {
+  position: relative;
+  text-decoration: none;
+  &:after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: -#{$offset};
+    width: 100%;
+    border-bottom: $thickness solid $color;
+  }
 }
 
 // font awesome font path directive

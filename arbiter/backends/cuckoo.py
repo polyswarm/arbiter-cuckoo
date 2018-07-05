@@ -7,10 +7,21 @@ from arbiter.backends import AnalysisBackend
 
 class Cuckoo(AnalysisBackend):
     def configure(self, config):
-        url = config["url"]
-        if not url.endswith("/"):
-            url += "/"
-        self.cuckoo_url = url
+        # API
+        self.cuckoo_url = config["url"]
+        if not self.cuckoo_url.endswith("/"):
+            self.cuckoo_url += "/"
+
+        # Web interface
+        if "view" in config:
+            self.cuckoo_view_url = config["view"]
+            if not self.cuckoo_view_url.endswith("/"):
+                self.cuckoo_view_url += "/"
+            self.href_pattern = "%sanalysis/%s/summary"
+        else:
+            self.cuckoo_view_url = self.cuckoo_url
+            self.href_pattern = "%stasks/%s/view"
+
         self.api_version = config.get("api_version", "cuckoo_api")
         self.options = config.get("options")
 
@@ -25,13 +36,43 @@ class Cuckoo(AnalysisBackend):
         else:
             path = "tasks/create/file"
         req = requests.post(self.cuckoo_url + path,
+                            headers={"X-Arbiter": self.name},
                             data=body, files=files)
         req.raise_for_status()
         resp = req.json()
+        task_id = None
         if self.api_version == "distributed":
             if resp.get("success") != "OK":
                 raise ValueError(resp)
-            return {"task_ids": resp.get("task_ids")}
-        if "task_id" not in resp:
-            raise ValueError(resp)
-        return {"task_id": resp["task_id"]}
+            task_ids = resp["task_ids"]
+            if len(task_ids) != 1:
+                # Not yet supported
+                raise ValueError(resp)
+            task_id = task_ids[1]
+        else:
+            if "task_id" not in resp:
+                raise ValueError(resp)
+            task_id = resp["task_id"]
+
+        return {"task_id": task_id,
+                "href": self.href_pattern % (self.cuckoo_view_url, task_id)}
+
+    def health_check(self):
+        req = requests.get(self.cuckoo_url + "v1/cuckoo/status")
+        req.raise_for_status()
+        data = req.json()
+        report = {
+            "cpu": data["cpuload"][0],
+            "memtotal": data["memtotal"] / 1024,
+            "memused": (data["memtotal"] - data["memavail"]) / 1024,
+            "machinestotal": data["machines"]["total"],
+            "machinesused": data["machines"]["total"] - data["machines"]["available"],
+        }
+        if data["diskspace"]:
+            # FIXME
+            total = used = 0
+            for v in data["diskspace"].values():
+                total += v["total"]
+                used += v["used"]
+                break
+        return report
