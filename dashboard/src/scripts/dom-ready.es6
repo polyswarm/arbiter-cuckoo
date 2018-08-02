@@ -152,7 +152,7 @@ const Application = {
           <li><button class="purple" type="submit" data-verdict-bounty>Submit</button></li>
         </ul>
       {{else}}
-        <p class="explanatory">You settled </p>
+        <p class="explanatory">You settled</p>
       {{/unless}}
     `)(data)
 
@@ -248,8 +248,8 @@ function updateWalletAmount(message) {
 
   // if the wallet is set to display NECTAR, display NCT
   if($el.data('view') == "nct") {
-    $("#wallet .amount-container > p.nct").contents()[0].data = shortValue(message.nct, 2);
-    $("#wallet .amount-container > p.eth").contents()[0].data = shortValue(message.eth, 2);
+    $("#wallet .amount-container > p.nct").contents()[0].data = shortValue(message.nct / Math.pow(10, 18), 2);
+    $("#wallet .amount-container > p.eth").contents()[0].data = shortValue(message.eth / Math.pow(10, 18), 2);
   }
 
 }
@@ -473,7 +473,6 @@ function bountySettleHandler(element, bounty) {
     done: () => {
       // pre-action handler
       parent.slideUp();
-      $("#total-pending")
     },
     setPending: () => {
 
@@ -481,7 +480,7 @@ function bountySettleHandler(element, bounty) {
 
       // sets the element to pending
       parent.find('.button-list').hide();
-      parent.find('.button-list').after($("<p>Bounty is settling...</p>"));
+      parent.find('.button-list').after($("<p class='indicate-settlement'><i class='fas fa-spinner-third fa-spin'></i>Settling...</p>"));
 
       let newTotalManual = parseInt($("#bounty-verdicts").find('#total-manual').text())-1;
       let newTotalPending = parseInt($("#bounty-verdicts").find('#total-pending').text())+1;
@@ -493,8 +492,6 @@ function bountySettleHandler(element, bounty) {
       // displays an error if there is an error
     }
   }
-
-  // add bounty guid to the
 
   // when the submit button is clicked, collect all results for the loaded
   // artifacts based on their occurance in the bounty to sent a list back
@@ -524,7 +521,6 @@ function bountySettleHandler(element, bounty) {
         }
       });
       stateHandlers.setPending();
-      // stateHandlers.unfreeze();
     }).catch(err => console.error(err));
 
   });
@@ -541,9 +537,11 @@ function formatArtifactVerdicts(bounty) {
   for(let i in bounty.artifacts) {
     let item = bounty.artifacts[i];
     item.expertOpinions = [];
-    for(let assertion of bounty.assertions) {
-      if(!assertion.mask[i]) continue;
-      item.expertOpinions.push(assertion);
+    if(bounty.assertions instanceof Array) {
+      for(let assertion of bounty.assertions) {
+        if(!assertion.mask[i]) continue;
+        item.expertOpinions.push(assertion);
+      }
     }
   }
   return bounty;
@@ -559,8 +557,6 @@ function loadBountyArtifacts(guid, target) {
   request(`/dashboard/bounties/${guid}`).then(data => {
 
     data = formatArtifactVerdicts(data);
-
-    console.log(data);
 
     if(!$artifacts.hasClass('shown')) {
       let html = $(Application.templates.verdictArtifacts(data));
@@ -632,47 +628,6 @@ function initializeVerdicts(manual, pending) {
 
   for(let b in bounties.pending)
     bounties.pending[b].init(bountyContainer.find('#pending-bounties'));
-
-  //
-  // // generate html
-  // let $manualBounties = $(manual.map(item => Application.templates.verdictBounty(item)).join(""));
-  // let $pendingBounties = $(pending.map(item => Application.templates.verdictBounty(item)).join(""));
-  //
-  // // append html
-  // bountyContainer.find('#manual-bounties').html($manualBounties);
-  // bountyContainer.find('#pending-bounties').html($pendingBounties);
-  //
-  // // bind the click listener to toggle the detailed verdict view
-  // bountyContainer.find('.verdict-item > footer > a').bind('click', e => {
-  //
-  //   e.preventDefault();
-  //   let link = $(e.currentTarget);
-  //   let guid = link.attr('href').split(':')[1];
-  //   let target = link.parents(".verdict-item").find('.verdict-artifacts');
-  //
-  //   if(!guid) {
-  //     console.log('Missing bounty GUID! Content will not load.');
-  //     return false;
-  //   }
-  //
-  //   request(`/dashboard/bounties/${guid}`).then(data => {
-  //
-  //     data = formatArtifactVerdicts(data);
-  //
-  //     if(!target.hasClass('shown')) {
-  //       let html = $(Application.templates.verdictArtifacts(data));
-  //       target.find('[data-populate="artifacts"]').append(html);
-  //       bountySettleHandler(html, data);
-  //     } else {
-  //       target.find('[data-populate="artifacts"]').empty();
-  //     }
-  //
-  //     target.toggleClass('shown');
-  //     link.text(target.hasClass('shown') ? 'Cancel' : 'Artifact verdicts');
-  //
-  //   }).catch(err => console.error(err)); // <== do not forget to handle this in the frontend!
-  //
-  // });
 
   // mock for aesthethics
   setTimeout(() => {

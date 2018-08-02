@@ -33,6 +33,6 @@ moneys = [
 
 if __name__ == "__main__":
     for n, a in moneys:
-        eth = get(accounts.user, "accounts/%s/balance/eth" % a)
-        nct = get(accounts.user, "accounts/%s/balance/nct" % a)
+        eth = get(accounts.user, "balances/%s/eth" % a)
+        nct = get(accounts.user, "balances/%s/nct" % a)
         print(n.ljust(8), nct, eth)

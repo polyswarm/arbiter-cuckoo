@@ -5373,6 +5373,8 @@ body {
     border-top: 0;
     justify-content: space-between;
     padding: 10px 0 5px 0; }
+  .verdict-item .indicate-settlement {
+    text-align: center; }
 
 .app {
   display: flex;

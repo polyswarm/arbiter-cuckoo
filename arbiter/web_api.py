@@ -148,10 +148,12 @@ def artifact_datapoints():
 def dashboard_manual_verdict(guid):
     """Set manual verdict for a bounty"""
     verdicts = request.json["verdicts"]
+    app.logger.info("Received verdicts for bounty %s: %s", guid,
+                    verdicts)
     if not isinstance(verdicts, list):
         abort(400, "Verdicts is not a list")
     for verdict in verdicts:
-        if not isinstance(verdict, int) or verdict < 0 or verdict > 100:
+        if verdict is not True and verdict is not False:
             abort(400, "Invalid verdict value")
 
     s = DbSession()
@@ -161,7 +163,9 @@ def dashboard_manual_verdict(guid):
             abort(403, "Bounty not in manual mode")
         if len(verdicts) != b.num_artifacts:
             abort(400, "This bounty requires %s verdicts" % b.num_artifacts)
-        if b.truth_settled:
+        if b.voted:
+            abort(403, "Bounty vote already submitted")
+        if b.settled:
             abort(403, "Bounty already settled")
         b.truth_value = verdicts
         s.add(b)
@@ -169,7 +173,6 @@ def dashboard_manual_verdict(guid):
     finally:
         s.close()
 
-    #dispatch_event("bounty_artifact_verdict", bounty_id)
     return jsonify({"status": "OK"})
 
 @app.route("/")
@@ -195,9 +198,14 @@ def _gather_bounty_data(b, verbose=True):
         "created": str(b.created),
         "num_artifacts": b.num_artifacts,
         "truth_value": b.truth_value,
-        "truth_settled": b.truth_settled,
         "truth_manual": b.truth_manual,
         "settle_block": b.settle_block,
+        "reveal_block": b.reveal_block,
+        "vote_block": b.vote_block,
+        "settled": b.settled,
+        "voted": b.voted,
+        "revealed": b.revealed,
+        "truth_settled": b.settled, # compat
     }
     pending_artifacts = 0
     if verbose:
@@ -246,7 +254,7 @@ def dashboard_bounties_guid(guid):
 def dashboard_bounties_pending():
     # Bounties that are being processed or need to be submitted
     s = DbSession()
-    bs = s.query(DbBounty).filter_by(truth_settled=False) \
+    bs = s.query(DbBounty).filter_by(status="active") \
         .filter(or_(DbBounty.truth_manual.is_(False),
                     DbBounty.truth_value.isnot(None))) \
         .order_by(DbBounty.id)
@@ -257,10 +265,11 @@ def dashboard_bounties_pending():
 @app.route("/dashboard/bounties/manual")
 @dashboard_auth
 def dashboard_bounties_manual():
-    """All bounties that need a manual verdict"""
+    """All not-yet-set bounties that need a manual verdict"""
     s = DbSession()
-    bs = s.query(DbBounty).filter_by(truth_manual=True) \
-        .filter_by(truth_settled=False) \
+    bs = s.query(DbBounty) \
+        .filter_by(truth_manual=True, voted=False) \
+        .filter(DbBounty.truth_value.is_(None)) \
         .order_by(DbBounty.id)
     bounties = [_gather_bounty_data(b, False) for b in bs]
     s.close()

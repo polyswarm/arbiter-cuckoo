@@ -7,6 +7,8 @@ import logging
 import os.path
 import yaml
 
+from arbiter.const import MINIMUM_STAKE_DEFAULT
+
 log = logging.getLogger(__name__)
 
 def repr_timedelta(dumper, data):
@@ -27,6 +29,8 @@ class ConfigFile(object):
         "url": "http://localhost:9080",
         "host": "localhost:31337",
         "addr": 0,
+        "addr_privkey": 0,
+        "minimum_stake": MINIMUM_STAKE_DEFAULT,
         "dashboard_password": "",
         "api_secret": "",
         "artifacts": "~/.artifacts",
@@ -34,6 +38,7 @@ class ConfigFile(object):
         "expires": datetime.timedelta(days=5),
         "analysis_backends": {},
         "trusted_experts": [],
+        "testing_mode": False,
     }
 
     def __init__(self, path=None):

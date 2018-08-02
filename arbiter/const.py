@@ -21,3 +21,9 @@ JOB_STATUS_NAMES = {
     JOB_STATUS_SUBMITTING: "submitting",
     JOB_STATUS_PENDING: "pending",
 }
+
+# Monetary constants
+WEI = 1
+NCT = 10**18
+# 10 million NCT
+MINIMUM_STAKE_DEFAULT = (10**7) * NCT

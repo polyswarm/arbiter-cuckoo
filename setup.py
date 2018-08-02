@@ -5,7 +5,7 @@ import setuptools
 
 setuptools.setup(
     name="arbiter",
-    version="0.3",
+    version="0.3.1",
     author="Jurriaan Bremer",
     author_email="jbr@cuckoo.sh",
     packages=setuptools.find_packages(),
@@ -32,5 +32,6 @@ setuptools.setup(
         "six==1.11.0",
         "sqlalchemy",
         "ws4py>=0.5",
+        "web3==4.4.1",
     ],
 )

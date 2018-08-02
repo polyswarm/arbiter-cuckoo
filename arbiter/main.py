@@ -14,7 +14,7 @@ import yaml
 
 from arbiter.arbiterd import Arbiterd
 from arbiter.config import ConfigFile
-from arbiter.const import JOB_STATUS_NAMES
+from arbiter.const import JOB_STATUS_NAMES, MINIMUM_STAKE_DEFAULT
 from arbiter.database import init_database
 
 default_conf_path = os.path.expanduser("~/.arbiter.yaml")
@@ -32,18 +32,18 @@ def initialize(path, clean=False):
               type=click.Path(exists=False))
 @click.pass_context
 def cli(ctx, debug, clean, config):
-    if not ctx.invoked_subcommand:
-        raise ValueError()
-
     level = logging.DEBUG if debug else logging.INFO
     logging.basicConfig(format="%(asctime)s %(name)s %(levelname)s: %(message)s",
                         level=level)
     logging.getLogger("urllib3").setLevel(logging.WARNING)
 
+    if not ctx.invoked_subcommand:
+        raise ValueError()
+
     ctx.meta["config_path"] = config
     if ctx.invoked_subcommand != "conf":
         if not os.path.exists(config):
-            sys.exit("Configuration file %s not found" % conf)
+            sys.exit("Configuration file %s not found" % config)
         ctx.meta["config"] = initialize(config, clean)
 
 @cli.command()
@@ -58,8 +58,9 @@ def conf(ctx):
     print("Configuration file", config, "created")
 
 @cli.command()
+@click.option("--manual", "-m", is_flag=True)
 @click.pass_context
-def run(ctx):
+def run(ctx, manual):
     import resource
     try:
         _, limit = resource.getrlimit(resource.RLIMIT_NOFILE)
@@ -67,8 +68,32 @@ def run(ctx):
     except ValueError:
         pass
 
-    p = Arbiterd(ctx.meta["config"])
+    p = Arbiterd(ctx.meta["config"], manual)
     p.run()
+
+@cli.command()
+@click.option("--amount", "-a", default=MINIMUM_STAKE_DEFAULT)
+@click.pass_context
+def stake(ctx, amount):
+    from arbiter.polyswarm_api import PolySwarmAPI
+
+    polyswarm = PolySwarmAPI(
+        ctx.meta["config"].host,
+        ctx.meta["config"].addr,
+        ctx.meta["config"].addr_privkey,
+        ctx.meta["config"].minimum_stake
+    )
+
+    amount = int(amount)
+
+    print("> making staking deposit of %d wei (NCT)" % (amount))
+
+    if not polyswarm.staking_deposit(amount):
+        print("ERROR: failed to make staking deposit")
+        exit(-1)
+
+    print("> OK!")
+
 
 @cli.command()
 @click.argument("bounty")
@@ -90,7 +115,11 @@ def settle(bounty, verdict):
 def bounties():
     from arbiter.database import DbSession, DbBounty
 
-    print("GUID".ljust(36), "Blck", "Fini ", "Value", "M")
+    print("Status".ljust(8), "GUID".ljust(36),
+          "MRVS", "<Vote", ">Settle",
+          "Value")
+
+    S = {True: "*", False: " "}
 
     s = DbSession()
     for b in s.query(DbBounty).order_by(DbBounty.id).all():
@@ -98,9 +127,13 @@ def bounties():
             value = "-"
         else:
             value = "".join(str(v)[:1] for v in  b.truth_value)
-        print(b.guid, str(b.settle_block).ljust(4),
-              str(b.truth_settled).ljust(5), value.ljust(5),
-              "*" if b.truth_manual else "")
+        print(b.status.ljust(8),
+              b.guid,
+              S[b.truth_manual] + S[b.revealed] + S[b.voted]  + S[b.settled],
+               str(b.vote_block).ljust(5),
+               str(b.settle_block).ljust(7),
+              value.ljust(5),
+              )
 
 @cli.command()
 def pending():

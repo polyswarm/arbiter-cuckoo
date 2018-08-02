@@ -93,7 +93,9 @@ class VerdictComponent(Component):
     @periodic(minutes=2)
     def expire_verdicts(self):
         """Expire pending verdict tasks."""
-        notify_tasks = []
+        # TODO: preferably replace "arbitrary" timeout window with backend
+        # polling
+        notify_tasks = set()
         now = datetime.datetime.utcnow()
         s = DbSession()
         avs = s.query(DbArtifactVerdict).with_for_update() \
@@ -103,11 +105,11 @@ class VerdictComponent(Component):
             log.warning("Job %s expired", av.id)
             av.status = JOB_STATUS_FAILED
             s.add(av)
-            notify_tasks.append([av.backend, av.artifact_id, av.meta])
+            notify_tasks.add(av.artifact_id)
         s.commit()
         s.close()
-        if notify_tasks:
-            dispatch_event("verdict_retry", notify_tasks)
+        for aid in notify_tasks:
+            dispatch_event("verdict_update", aid)
 
     # TODO: we can retry jobs with failed submissions:
     @periodic(minutes=2)
@@ -135,6 +137,11 @@ class VerdictComponent(Component):
 
         artifact = s.query(DbArtifact).with_for_update() \
             .filter_by(id=artifact_id).one()
+        if artifact.processed:
+            log.warning("Verdict for artifact #%s already made", artifact_id)
+            s.close()
+            return
+
         verdicts = s.query(DbArtifactVerdict).filter_by(artifact_id=artifact_id)
         bounty_id = artifact.bounty_id
         incomplete = False
@@ -240,7 +247,7 @@ class VerdictComponent(Component):
                 s.query(DbArtifactVerdict) \
                     .filter_by(id=av_id, status=JOB_STATUS_SUBMITTING) \
                     .update(fields, synchronize_session=False)
-                if status == JOB_STATUS_DONE:
+                if status <= JOB_STATUS_DONE:
                     reeval = True
 
             s.commit()

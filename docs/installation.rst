@@ -23,33 +23,44 @@ To automatically create the initial configuration, run::
 Change the configuration of the Arbiter as necessary for your setup.
 Annotated example arbiter configuration::
 
+    # Tip: use quoted strings to ensure the values are valid YAML-syntax.
+
     # Dashboard and API:
     bind: 'localhost:49080'
     url: 'https://arbiter.cuckoo.sh'
 
     # Password necessary to log in to the dashboard
-    dashboard_password: 'N-lYIFcHtB52C1mZ9e3tQA'
+    # Example value: 't0ps3cret5'
+    dashboard_password: *CHANGE-ME
 
     # Secret used for analysis backend authentication
-    api_secret: '0FR5bj19nh-BByb6CbArowDuvVL14BrxsdcKMl_Be7A'
+    # Example value: 'v3rystr0ngs3cr3t'
+    api_secret: *CHANGE-ME
 
     # PolySwarm address
-    host: 'localhost:8091'
+    # Example value: 'localhost:8091'
+    host: *CHANGE-ME
 
     # Arbiter account (used to fetch wallet info)
-    addr: '0x1f50Cf288b5d19a55ac4c6514e5bA6a704BD03EC'
+    # Address format: '0x123'
+    addr: *CHANGEME
+    # Private key format: '0x123'
+    addr_privkey: *CHANGEME
 
     # Artifact cache (needs to be writable)
     artifacts: /srv/arbiter/samples
 
     # Database
-    dburi: 'postgresql://polyswarm:myL1ttl3p0ly!@localhost/arbiter'
+    # Example value: 'postgresql://polyswarm:myL1ttl3p0ly!@localhost/arbiter'
+    dburi: *CHANG-EME
 
     # Optional list of experts that we trust. That is, if they disagree with
     # our verdict the bounty is set to manual mode, requiring a user to
     # double-check the verdict.
-    trusted_experts:
-    - "0xe23bc28b143259aa0ce9c9c949f882c6acb9822b"
+    # Example address format: '0xe23bc28b143259aa0ce9c9c949f882c6acb9822b'
+    #
+    #trusted_experts:
+    #- "0x..."
 
     # You must configure at least one analysis backend. The arbiter needs to
     # be able to access the URL.
@@ -57,10 +68,10 @@ Annotated example arbiter configuration::
       # The name of the backend identifies which backend plugin will be used
       cuckoo:
         # The URL to the Cuckoo API
-        url: http://upstream.cuckoo.sh:8090/
+        url: https://upstream.cuckoo.sh:8090/
 
         # OPTIONAL: The URL to the Cuckoo Web interface for viewing of reports
-        view: http://upstream.cuckoo.sh:8100/
+        view: https://upstream.cuckoo.sh:8100/
 
         # We fully trust the verdict if this backend identifies a sample as
         # malicious (doesn't require majority vote)
@@ -70,18 +81,22 @@ Annotated example arbiter configuration::
         # Explicitly specify which plugin to use, in case you have multiple of
         # the same type (but maybe a different version or options)
         plugin: cuckoo
-        url: http://upstream.cuckoo.sh:8090/
+        url: https://upstream.cuckoo.sh:8090/
         # Cuckoo specific: analysis options
         options: 'analysis=kernel,human=0'
 
       # Cuckoo Modified
       modified:
-        url: http://modified.cuckoo.sh:8090/
+        url: https://modified.cuckoo.sh:8090/
 
       # Example of a process-based scanner (running under abrunner)
       demoscan:
         plugin: process
-        url: http://demoscan.cuckoo.sh:8090/
+        url: https://demoscan.cuckoo.sh:8090/
+
+You **must** change all the values to match your setup.
+Generate strong random secrets for the dashboard password and API secret.
+Make sure only the arbiter can read this file.
 
 Run the arbiter using your favorite deployment method, e.g. using the included
 systemd unit::
@@ -103,7 +118,8 @@ If it is used solely by the arbiter, ensure that only the arbiter can access
 it over the network.
 
 To allow Cuckoo to report back artifact verdicts, you must
-enable the callback module in ``.cuckoo/conf/reporting.conf``::
+enable the callback module in ``.cuckoo/conf/reporting.conf`` and configure
+the secret used for identification::
 
     [arbiter]
     enabled = yes

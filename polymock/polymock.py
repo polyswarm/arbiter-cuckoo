@@ -31,8 +31,13 @@ parser.add_argument("-a", "--artifacts", type=int, default=3, help="Maximum arti
 parser.add_argument("-A", "--assertions", type=int, default=10, help="Maximum assertions per bounty")
 parser.add_argument("-g", "--generate", type=int, default=50, help="Number of bounties to generate over time")
 
+EXPIRATION_WINDOW = 5
+ARBITER_VOTE_WINDOW = 25
+ASSERTION_REVEAL_WINDOW = 25
+
 ARGS = parser.parse_args()
 AUTO_GENERATE = ARGS.generate
+START_TIME = int(time.time())
 
 API_TOKENS = {
     "cuckoo": "cuckoo.1529584950.8acb2fb28f10f6095457e5783e47f88965efbd5278fefd7006d533ddb5d60e9d",
@@ -80,6 +85,13 @@ def random_file():
     n = random.randrange(2, 7)
     return base58.b58encode(os.urandom(n)).decode("utf8").rstrip("=") + ext
 
+def ws_bounty(b):
+     # Polyswarm only sends a subset
+     event = {}
+     for k in ("guid", "author", "amount", "uri", "expiration"):
+         event[k] = b[k]
+     return event
+
 def gen_bounty(files=None):
     if files:
         n = len(files)
@@ -98,15 +110,23 @@ def gen_bounty(files=None):
     state.ipfs[ipfs] = {"meta": meta, "files": [f[1] for f in files]}
     log.debug("create %s", g)
     k = {
-        "amount": "%s" % random.randrange(1, 1000000000000),
-        "author": "0x%08x" % random.randrange(1, 1000000000000),
-        "expiration": "%s" % (state.block + 2,),
         "guid": g,
-        "resolved": False,
+        "author": "0x%08x" % random.randrange(1, 1000000000000),
+        "amount": "%s" % random.randrange(1, 1000000000000),
         "uri": ipfs,
-        "verdicts": [False] * n
+        "num_artifacts": n,
+        "expiration": state.block + EXPIRATION_WINDOW,
+        "assigned_arbiter": "0x1f50cf288b5d19a55ac4c6514e5ba6a704bd03ec",
+        "resolved": False,
+
+        "bloom": [],
+        "voters": [],
+        "verdicts": [False] * n,
+        "bloom_votes": [],
     }
     state.bounties[g] = k
+
+    # TODO: assertion on timer, assertion events
 
     asserts = state.assertions[g] = []
     a = random.randrange(0, ARGS.assertions + 1)
@@ -114,10 +134,11 @@ def gen_bounty(files=None):
     random.shuffle(authors)
     for author in authors[:a]:
         asserts.append({
-            "bounty_guid": g,
             "author": author,
             "bid": "60282812500000000000",
             "mask": [random.choice([True, False, False]) for i in range(n)],
+            "commitment": str(random.randrange(1, 0xffffffff)),
+            "nonce": str(random.randrange(1, 0xfffffffff)),
             "verdicts": [random.choice([True, False]) for i in range(n)],
             "metadata": random.choice(ASSERTION_META),
         })
@@ -151,7 +172,7 @@ def block_update():
         if AUTO_GENERATE and AUTO_GENERATE is not True:
             AUTO_GENERATE -= 1
         m = gen_bounty()
-        events.put(w("bounty", m))
+        events.put(w("bounty", ws_bounty(m)))
 
 def receive(ws):
     while True:
@@ -162,13 +183,14 @@ def receive(ws):
 
 def stream_events(ws):
     log.info("WebSocket connection")
+    ws.send(w("connected", {"start_time": START_TIME}))
     state.connected = True
     try:
         gevent.spawn(receive, ws)
         gevent.sleep(0.1) # Deal with ws4py bug
         ws.send(w("block", {"number": state.block}))
         for b in state.bounties.values():
-            ws.send(w("bounty", b))
+            ws.send(w("bounty", ws_bounty(b)))
         events.put(w("block", {"number": state.block}))
         while True:
             m = events.get()
@@ -183,9 +205,9 @@ def stream_events(ws):
         state.connected = False
     return []
 
-@app.route("/accounts/<acct>/balance/<kind>")
+@app.route("/balances/<acct>/<kind>")
 def account_balance(acct, kind):
-    return ok("1000000000000")
+    return ok("10000000000000000000000000")
 
 @app.route("/bounties", methods=["POST"])
 def submit_bounty():
@@ -195,17 +217,30 @@ def submit_bounty():
         files.append((f.filename, data))
     if files:
          g = gen_bounty(files)
-         events.put(w("bounty", g))
+         events.put(w("bounty", ws_bounty(g)))
          return ok(g)
     return err(400, "No files")
 
-@app.route("/bounties/<ignore>")
-def bounties_pending(ignore):
-    # TODO: return bounties!
-    return ok([])
+@app.route("/bounties/<guid>")
+def bounties_data(guid):
+    if guid in ("pending", "active"):
+        # TODO
+        return ok([])
+
+    b = state.bounties.get(guid)
+    if not b:
+        return err(404, "No such bounty")
+    return ok(b)
 
 @app.route("/bounties/<guid>/assertions")
 def bounties_assertions(guid):
+    bounty = state.bounties.get(guid)
+    if not bounty:
+        return err(404, "No such bounty")
+    elif state.block < (bounty["expiration"] + ARBITER_VOTE_WINDOW + ASSERTION_REVEAL_WINDOW):
+        log.info("assertions at %s, window %s", state.block, bounty["expiration"] + ARBITER_VOTE_WINDOW + ASSERTION_REVEAL_WINDOW)
+        return err(403, "Assertions not yet revealed")
+
     b = state.assertions.pop(guid, None)
     log.info("assertions %s %s", guid,
              len(b) if b is not None else b)
@@ -213,18 +248,51 @@ def bounties_assertions(guid):
         return err(404, "No such bounty for assertions")
     return ok(b)
 
+@app.route("/bounties/<guid>/vote", methods=["POST"])
+def bounties_vote(guid):
+    if random.random() < 0.2:
+        return err(500, "Random failure")
+    log.info("vote %s", guid)
+    b = state.bounties.get(guid)
+    if b is None:
+        return err(404, "No such bounty")
+    elif not ((b["expiration"] + ARBITER_VOTE_WINDOW) > state.block):
+        log.info("vote at %s, window %s", state.block, b["expiration"] + ARBITER_VOTE_WINDOW)
+        return err(403, "Vote window closed")
+    wait_next_block()
+    return ok({"transactions": [
+        {"nonce": 1, "chainId": 1, "gasPrice": 1, "gas": "0x1000000000000"}
+    ]})
+
 @app.route("/bounties/<guid>/settle", methods=["POST"])
 def bounties_settle(guid):
     if random.random() < 0.2:
         return err(500, "Random failure")
-
     log.info("settle %s", guid)
     wait_next_block()
     b = state.bounties.pop(guid, None)
     if b is None:
         return err(404, "No such bounty")
     state.ipfs.pop(b["uri"], None)
-    return ok("We did it")
+    return ok({"transactions": [
+        {"nonce": 1, "chainId": 1, "gasPrice": 1, "gas": "0x1000000000000"}
+    ]})
+
+@app.route("/transactions", methods=["POST"])
+def transactions():
+    return ok("thanks")
+
+@app.route("/balances/<acct>/staking/deposit", methods=["POST"])
+def staking_deposit():
+    return ok("thanks")
+
+@app.route("/balances/<acct>/staking/total")
+def staking_total(acct):
+    return ok("10000000000000000000000000")
+
+@app.route("/balances/<acct>/staking/withdrawable")
+def staking_withdrawable():
+    return ok(1)
 
 @app.route("/artifacts/<ipfs>")
 def artifacts_meta(ipfs):
@@ -247,13 +315,16 @@ def artifacts_data(ipfs, idx):
 def api_task():
     aid = request.form["custom"]
     backend = request.headers.get("X-Arbiter")
-    log.info("Received a request to analyze %s (backend: %s)", aid, backend)
-    speed = (max(0, ARGS.cuckoo_speed - 30),
-             ARGS.cuckoo_speed + 30)
+    xtime = max(1, int(ARGS.cuckoo_speed * 0.2))
+    t = random.randrange(max(0, ARGS.cuckoo_speed - xtime),
+                         ARGS.cuckoo_speed + xtime)
+    log.info("Received a request to analyze %s (backend: %s | speed: %s)", aid, backend, t)
     def cuckoo_submit():
-        t = random.randrange(*speed)
         gevent.sleep(t)
         jobs.put((aid, backend))
+    if random.random() < 0.001:
+        # Randomly fail
+        return jsonify({"error": "Something went wrong"}), 500
     gevent.spawn(cuckoo_submit)
     task_id = state.task_id
     state.task_id += 1

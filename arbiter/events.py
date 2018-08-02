@@ -7,6 +7,7 @@ import datetime
 import gevent
 import json
 import logging
+import socket
 
 from ws4py.client import geventclient
 
@@ -23,6 +24,10 @@ class Events(Component):
         obj = json.loads(message)
 
         if obj["event"] == "bounty":
+            # TODO Fetching additional bounty information from polyswarmd
+            # is done primarily for checking num_artifacts. Should we
+            # reintroduce this? For now doesn't seem 100% necessary.
+            # bounty = self.polyswarm.bounty(obj["data"]["guid"])
             dispatch_event("bounty", obj["data"])
 
         elif obj["event"] == "block":
@@ -33,6 +38,9 @@ class Events(Component):
 
         elif obj["event"] == "verdict":
             dispatch_event("verdict", obj["data"])
+
+        elif obj["event"] == "connected":
+            dispatch_event("connected", obj["data"])
 
         else:
             log.debug("Unhandled event: %r", obj)
@@ -50,6 +58,8 @@ class Events(Component):
                     if m is None:
                         break
                     self.on_message(m.data)
+            except socket.error as e:
+                log.error("Events.run: %s", e)
             except:
                 log.exception("Events.run")
             try:
@@ -160,5 +170,7 @@ def run_periodicx(func, delay):
 def trap_run(func, args, kwargs):
     try:
         func(*args, **kwargs)
+    except SystemExit:
+        raise
     except:
         log.exception("Error in %r:", func)

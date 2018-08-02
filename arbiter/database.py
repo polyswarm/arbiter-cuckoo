@@ -3,8 +3,9 @@
 
 import datetime
 
-from sqlalchemy import create_engine, Column, ForeignKey
 from sqlalchemy import Index, Integer, String, DateTime, Boolean
+from sqlalchemy import create_engine, Column, ForeignKey
+from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, backref, relationship
 
@@ -22,34 +23,44 @@ class DbBounty(Base):
     id = Column(Integer, primary_key=True)
     guid = Column(UUID, unique=True)
     created = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
-    expires = Column(DateTime, nullable=False)
     amount = Column(String, nullable=False)
     author = Column(String, nullable=False)
     num_artifacts = Column(Integer, nullable=False)
+
+    status = Column(ENUM("active", "finished", "aborted", name="bounties_status"),
+                    nullable=False, default="active", index=True)
 
     # Our ground truth as pre-serialized JSON, must only be set when ready to
     # settle.
     # TODO: maybe just a bit string or string with T/F
     truth_value = Column(JsonString, nullable=True)
 
-    # Whether submission has been succesful
-    truth_settled = Column(Boolean, nullable=False, default=False)
-
     # A bounty that requires manual intervention
     truth_manual = Column(Boolean, nullable=False, default=False)
 
-    # Minimum time (block) at which we can settle the bounty
-    # Also the time at which assertions must become available
-    settle_block = Column(Integer, nullable=False)
+    # Expiration block for assertions
+    expiration_block = Column(Integer, nullable=False)
 
+    # The time (block) **before** which we must vote on the bounty
+    vote_block = Column(Integer, nullable=False)
+    voted = Column(Boolean, nullable=False, default=False)
+
+    # The time (block) at which assertions should become available
+    reveal_block = Column(Integer, nullable=False)
+    revealed = Column(Boolean, nullable=False, default=False)
     # Cache assertions for UI
     assertions = Column(JsonString, nullable=True)
+
+    # The time (block) at which we can settle the bounty
+    settle_block = Column(Integer, nullable=False)
+    settled = Column(Boolean, nullable=False, default=False)
 
     artifacts = relationship("DbArtifact",
                              backref=backref("bounty", lazy="noload"))
 
-# Is-settled and current-block check
-Index("ix_bounty_settle", DbBounty.truth_settled, DbBounty.settle_block)
+Index("ix_bounty_voted", DbBounty.voted, DbBounty.vote_block)
+Index("ix_bounty_revealed", DbBounty.revealed, DbBounty.reveal_block)
+Index("ix_bounty_settled", DbBounty.settled, DbBounty.settle_block)
 
 class DbArtifact(Base):
     """An artifact with one or more analysis results"""

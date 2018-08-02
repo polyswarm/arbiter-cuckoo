@@ -3,6 +3,9 @@
 
 import requests
 import six
+import time
+
+from web3.auto import w3 as web3
 
 class PolySwarmError(Exception):
     def __init__(self, status, message, reason=''):
@@ -17,14 +20,54 @@ class PolySwarmNotFound(PolySwarmError):
     pass
 
 class PolySwarmAPI:
-    def __init__(self, host, account):
+    def __init__(self, host, account, account_privkey, minimum_stake, chain="home"):
         self.host = host
         self.account = account
+        self.account_privkey = account_privkey
+        self.chain = chain
+        self.minimum_stake = minimum_stake
+
+    def wait_online(self, tries=30):
+        for _ in range(tries):
+            try:
+                requests.get("http://%s/" % self.host, timeout=10)
+                return
+            except IOError:
+                pass
+            time.sleep(1)
+        raise IOError("Polyswarm host at %s not line" % self.host)
+
+    def check_staking_requirements(self):
+        staking_balance = int(self.staking_balance_total())
+
+        if staking_balance < self.minimum_stake:
+            raise PolySwarmError(
+                "FATAL",
+                "Insufficient funds staked! (minimum: %d, have: %d, need: %d)" % (
+                    self.minimum_stake, staking_balance,
+                    (self.minimum_stake - staking_balance)
+                )
+            )
 
     def balance(self, kind, account=None):
         if not account:
             account = self.account
-        return self(requests.get, "accounts/%s/balance/%s" % (account, kind))
+        return self(requests.get, "balances/%s/%s" % (account, kind))
+
+    def staking_deposit(self, amount):
+        return self(
+            requests.post, "staking/deposit?account=%s" % (self.account),
+            {"amount": str(amount)}, sign=True
+        )
+
+    def staking_balance_total(self):
+        return self.balance("staking/total")
+
+    def staking_balance_withdrawable(self):
+        return self.balance("staking/withdrawable")
+
+    def bounty(self, guid):
+        return self(requests.get, "bounties/%s" % guid)
 
     def pending_bounties(self):
         b = self(requests.get, "bounties/pending")
@@ -34,19 +77,44 @@ class PolySwarmAPI:
     def bounty_assertions(self, guid):
         return self(requests.get, "bounties/%s/assertions" % guid)
 
-    def settle_bounty(self, guid, verdicts):
-        return self(requests.post, "bounties/%s/settle" % guid, {"verdicts": verdicts})
+    def vote_bounty(self, guid, verdicts):
+        args = (guid, self.account, self.chain)
+        self(
+            requests.post, "bounties/%s/vote?account=%s&chain=%s" % args,
+            {"verdicts": verdicts, "valid_bloom": False},
+            sign=True
+        )
 
-    def __call__(self, method, path, args=None):
-        resp = method("http://%s/%s" % (self.host, path), json=args)
-        r = resp.json()
+    def settle_bounty(self, guid):
+        args = (guid, self.account, self.chain)
+        self(
+            requests.post, "bounties/%s/settle?account=%s&chain=%s" % args,
+            sign=True
+        )
+
+    def __call__(self, method, path, args=None, sign=False):
+        resp = method("http://%s/%s" % (self.host, path), json=args, timeout=120)
+        try:
+            r = resp.json()
+        except ValueError:
+            if resp.status_code == 404:
+                raise ValueError("404 on %s" % path)
         if resp.status_code == 404:
             raise PolySwarmNotFound(resp.status_code, r.get("status"), resp.reason)
         elif resp.status_code != 200:
-            raise PolySwarmError(resp.status_code, r.get("status"), resp.reason)
+            raise PolySwarmError(resp.status_code, r.get("message"), resp.reason)
         if r.get("status") != "OK":
             raise PolySwarmError(resp.status_code, r.get("status"))
-        return r.get("result")
+        r = r.get("result")
+        if sign:
+            signed = []
+            for tx in r.get("transactions", []):
+                s = web3.eth.account.signTransaction(tx, self.account_privkey)
+                signed.append(bytes(s["rawTransaction"]).hex())
+
+            # TODO Error checking - did the transaction succeed?
+            self(requests.post, "transactions", {"transactions": signed})
+        return r
 
 class Address(object):
     def __init__(self, addr):

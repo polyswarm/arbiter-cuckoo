@@ -33,13 +33,18 @@ class Arbiterd(object):
         MonitorComponent,
     ]
 
-    def __init__(self, config):
+    def __init__(self, config, manual_mode=False):
         # For rate graph
         self.artifact_interval = 600
 
         self.config = config
         self.host = config.host
-        self.polyswarm = PolySwarmAPI(config.host, config.addr)
+        self.polyswarm = PolySwarmAPI(
+            config.host, config.addr, config.addr_privkey, config.minimum_stake
+        )
+
+        self.manual_mode = manual_mode
+
         # For dashboard
         self.wallet = {}
 
@@ -47,6 +52,8 @@ class Arbiterd(object):
         ipfs.ipfs_host = self.config.host
         ipfs.cache_path = self.config.artifacts
 
+        self.polyswarm.wait_online()
+        self.polyswarm.check_staking_requirements()
         reset_pending_jobs()
 
         load_backends(self.config.analysis_backends)
