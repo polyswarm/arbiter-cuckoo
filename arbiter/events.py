@@ -1,4 +1,4 @@
-# Copyright (C) 2018 Bremer Computer Security B.V.
+# Copyright (C) 2018 Hatching B.V.
 # This file is licensed under the MIT License, see also LICENSE.
 
 # TODO: better name for this module
@@ -18,7 +18,7 @@ log = logging.getLogger(__name__)
 class Events(Component):
     def __init__(self, parent):
         self.polyswarm = parent.polyswarm
-        self.uri = "ws://%s/events" % parent.host
+        self.uri = "wss://%s/events" % parent.config.polyswarmd
 
     def on_message(self, message):
         obj = json.loads(message)
@@ -41,6 +41,12 @@ class Events(Component):
 
         elif obj["event"] == "connected":
             dispatch_event("connected", obj["data"])
+
+        elif obj["event"] == "settled_bounty":
+            data = obj["data"]
+            log.debug(
+                "Settled bounty: settler=%s block=%s", data["settler"],
+                data["settled_block"])
 
         else:
             log.debug("Unhandled event: %r", obj)
@@ -70,8 +76,9 @@ class Events(Component):
             gevent.sleep(3)
 
     def pending_bounties(self):
-        for bounty in self.polyswarm.pending_bounties():
-            dispatch_event("bounty", bounty)
+        # for bounty in self.polyswarm.pending_bounties():
+            # dispatch_event("bounty", bounty)
+        pass
 
 class EventParallel:
     def __init__(self, event, first):

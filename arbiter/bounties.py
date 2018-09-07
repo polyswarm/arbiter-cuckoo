@@ -1,4 +1,4 @@
-# Copyright (C) 2018 Bremer Computer Security B.V.
+# Copyright (C) 2018 Hatching B.V.
 # This file is licensed under the MIT License, see also LICENSE.
 
 import datetime
@@ -296,9 +296,9 @@ class BountyComponent(Component):
             num_artifacts=num_artifacts,
 
             expiration_block=expiration,
-            vote_block=expiration + ARBITER_VOTE_WINDOW,
-            reveal_block=expiration + ARBITER_VOTE_WINDOW + ASSERTION_REVEAL_WINDOW,
-            settle_block=expiration + ARBITER_VOTE_WINDOW + ASSERTION_REVEAL_WINDOW
+            vote_block=expiration + self.polyswarm.vote_window,
+            reveal_block=expiration + self.polyswarm.vote_window + self.polyswarm.reveal_window,
+            settle_block=expiration + self.polyswarm.vote_window + self.polyswarm.reveal_window
         )
 
         if self.manual_mode:

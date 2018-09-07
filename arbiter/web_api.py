@@ -1,4 +1,4 @@
-# Copyright (C) 2018 Bremer Computer Security B.V.
+# Copyright (C) 2018 Hatching B.V.
 # This file is licensed under the MIT License, see also LICENSE.
 
 # API used by frontend and analysis backends.
@@ -28,7 +28,6 @@ dashboard_path = os.path.join(os.path.dirname(__file__), "dashboard")
 
 class APIComponent(WSGIComponent):
     name = "api"
-    bind = ":9080"
     ws = {"/kraken/tentacle": dashboard_ws}
     app = app
 
@@ -37,6 +36,7 @@ class APIComponent(WSGIComponent):
         self.polyswarm = parent.polyswarm
         self.api_secret = parent.config.api_secret
         self.dashboard_password = parent.config.dashboard_password
+        self.bind = parent.config.bind
 
 def dashboard_auth(f):
     def check_auth(auth):

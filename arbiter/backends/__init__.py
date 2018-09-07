@@ -1,4 +1,4 @@
-# Copyright (C) 2018 Bremer Computer Security B.V.
+# Copyright (C) 2018 Hatching B.V.
 # This file is licensed under the MIT License, see also LICENSE.
 
 # Write-once list of all analysis backends
@@ -18,8 +18,14 @@ def load_backends(config):
             if obj == "AnalysisBackend":
                 continue
             elif obj[0].isalpha() and obj[0].isupper():
-                plugin_class = getattr(mod, obj, None)
-                break
+                val = getattr(mod, obj, None)
+                try:
+                    if issubclass(val, AnalysisBackend):
+                        plugin_class = val
+                        break
+                except TypeError:
+                    # Not a class
+                    pass
         if not plugin_class:
             raise ValueError("Missing plugin class for %s" % plugin)
 
@@ -43,19 +49,21 @@ class AnalysisBackend(object):
     def configure(self, conf):
         """Set up analysis backend with plugin-specific configuration"""
 
-    def submit_artifact(self, artifact):
-        """Submit an artifact for analysis.
+    def cancel_artifact(self, av_id, artifact):
+        """Job no longer applies (e.g. due to timeout)"""
+
+    def submit_artifact(self, av_id, artifact, previous_task=None):
+        """Submit an artifact for analysis. If a task is resubmitted (e.g. at
+        application start), the previous task may contain metadata of the
+        previous, interrupted task.
 
         Possible return values:
         * None
-        * Dictionary with JSON-serializable items (can be empty)
+        * Dictionary with JSON-serializable items (can be empty); if it
+          contains 'verdict', the job is completed.
         * An integer that indicates the verdict (for synchronous tasks)
         """
         raise NotImplementedError
-
-    def artifact_status(self, artifact):
-        """
-        """
 
     def health_check(self):
         pass

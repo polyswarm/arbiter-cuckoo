@@ -1,11 +1,15 @@
-# Copyright (C) 2018 Bremer Computer Security B.V.
+# Copyright (C) 2018 Hatching B.V.
 # This file is licensed under the MIT License, see also LICENSE.
 
+import logging
+import random
 import requests
 import six
 import time
 
 from web3.auto import w3 as web3
+
+log = logging.getLogger(__name__)
 
 class PolySwarmError(Exception):
     def __init__(self, status, message, reason=''):
@@ -19,23 +23,35 @@ class PolySwarmError(Exception):
 class PolySwarmNotFound(PolySwarmError):
     pass
 
-class PolySwarmAPI:
-    def __init__(self, host, account, account_privkey, minimum_stake, chain="home"):
+class PolySwarmAPI(object):
+    def __init__(self, host, apikey, account, account_privkey,
+                 minimum_stake, chain="home"):
         self.host = host
+        self.apikey = apikey
         self.account = account
         self.account_privkey = account_privkey
         self.chain = chain
         self.minimum_stake = minimum_stake
+        self.base_nonce = random.randint(0, 0xFFFFFFFF)
 
     def wait_online(self, tries=30):
         for _ in range(tries):
             try:
-                requests.get("http://%s/" % self.host, timeout=10)
+                requests.get("https://%s/" % self.host, timeout=10)
                 return
             except IOError:
                 pass
             time.sleep(1)
         raise IOError("Polyswarm host at %s not line" % self.host)
+
+    def set_windows(self):
+        reveal = self(requests.get, "bounties/window/reveal")
+        self.reveal_window = reveal["blocks"]
+        log.info("Assertion reveal window: %s", self.reveal_window)
+
+        vote = self(requests.get, "bounties/window/vote")
+        self.vote_window = vote["blocks"]
+        log.info("Vote window: %s", self.vote_window)
 
     def check_staking_requirements(self):
         staking_balance = int(self.staking_balance_total())
@@ -93,7 +109,19 @@ class PolySwarmAPI:
         )
 
     def __call__(self, method, path, args=None, sign=False):
-        resp = method("http://%s/%s" % (self.host, path), json=args, timeout=120)
+        headers = {
+            "Authorization": "Bearer %s" % self.apikey,
+        }
+        if sign:
+            if "?" in path:
+                path += "&base_nonce=%s" % self.base_nonce
+            else:
+                path += "?base_nonce=%s" % self.base_nonce
+            self.base_nonce += 2
+        resp = method(
+            "https://%s/%s" % (self.host, path), json=args,
+            headers=headers, timeout=120
+        )
         try:
             r = resp.json()
         except ValueError:

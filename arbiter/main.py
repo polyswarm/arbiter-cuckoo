@@ -1,4 +1,4 @@
-# Copyright (C) 2018 Bremer Computer Security B.V.
+# Copyright (C) 2018 Hatching B.V.
 # This file is licensed under the MIT License, see also LICENSE.
 
 from __future__ import print_function
@@ -75,25 +75,15 @@ def run(ctx, manual):
 @click.option("--amount", "-a", default=MINIMUM_STAKE_DEFAULT)
 @click.pass_context
 def stake(ctx, amount):
-    from arbiter.polyswarm_api import PolySwarmAPI
+    p = Arbiterd(ctx.meta["config"])
 
-    polyswarm = PolySwarmAPI(
-        ctx.meta["config"].host,
-        ctx.meta["config"].addr,
-        ctx.meta["config"].addr_privkey,
-        ctx.meta["config"].minimum_stake
-    )
+    print("making staking deposit of %d wei (NCT).." % amount)
 
-    amount = int(amount)
-
-    print("> making staking deposit of %d wei (NCT)" % (amount))
-
-    if not polyswarm.staking_deposit(amount):
+    if not p.stake(amount):
         print("ERROR: failed to make staking deposit")
         exit(-1)
 
-    print("> OK!")
-
+    print("Staking went successfully.")
 
 @cli.command()
 @click.argument("bounty")

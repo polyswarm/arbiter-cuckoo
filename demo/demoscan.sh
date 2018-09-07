@@ -1,5 +1,5 @@
 #!/bin/sh
-# Copyright (C) 2018 Bremer Computer Security B.V.
+# Copyright (C) 2018 Hatching B.V.
 # This file is licensed under the MIT License, see also LICENSE.
 
 FN="$1"

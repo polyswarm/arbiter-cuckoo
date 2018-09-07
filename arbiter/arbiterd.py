@@ -1,4 +1,4 @@
-# Copyright (C) 2018 Bremer Computer Security B.V.
+# Copyright (C) 2018 Hatching B.V.
 # This file is licensed under the MIT License, see also LICENSE.
 
 # Application entry point
@@ -38,9 +38,9 @@ class Arbiterd(object):
         self.artifact_interval = 600
 
         self.config = config
-        self.host = config.host
         self.polyswarm = PolySwarmAPI(
-            config.host, config.addr, config.addr_privkey, config.minimum_stake
+            config.polyswarmd, config.apikey, config.addr,
+            config.addr_privkey, config.minimum_stake
         )
 
         self.manual_mode = manual_mode
@@ -48,11 +48,16 @@ class Arbiterd(object):
         # For dashboard
         self.wallet = {}
 
+    def stake(self, amount):
+        return self.polyswarm.staking_deposit(amount)
+
     def run(self):
-        ipfs.ipfs_host = self.config.host
+        ipfs.ipfs_host = self.config.polyswarmd
+        ipfs.ipfs_apikey = self.config.apikey
         ipfs.cache_path = self.config.artifacts
 
         self.polyswarm.wait_online()
+        self.polyswarm.set_windows()
         self.polyswarm.check_staking_requirements()
         reset_pending_jobs()
 

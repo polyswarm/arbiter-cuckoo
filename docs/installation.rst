@@ -37,9 +37,11 @@ Annotated example arbiter configuration::
     # Example value: 'v3rystr0ngs3cr3t'
     api_secret: *CHANGE-ME
 
-    # PolySwarm address
-    # Example value: 'localhost:8091'
-    host: *CHANGE-ME
+    # PolySwarmd URL and API key
+    # Example API URL: 'polyswarmd.polyswarm.io'
+    # Example API key: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    polyswarmd: *CHANGE-ME
+    apikey: *CHANGE-ME
 
     # Arbiter account (used to fetch wallet info)
     # Address format: '0x123'

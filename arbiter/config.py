@@ -1,4 +1,4 @@
-# Copyright (C) 2018 Bremer Computer Security B.V.
+# Copyright (C) 2018 Hatching B.V.
 # This file is licensed under the MIT License, see also LICENSE.
 
 import base64
@@ -27,7 +27,8 @@ class ConfigFile(object):
     defaults = {
         "bind": ":9080",
         "url": "http://localhost:9080",
-        "host": "localhost:31337",
+        "polyswarmd": "polyswarmd.polyswarm.io",
+        "apikey": "a"*32,
         "addr": 0,
         "addr_privkey": 0,
         "minimum_stake": MINIMUM_STAKE_DEFAULT,

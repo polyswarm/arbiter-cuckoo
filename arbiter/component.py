@@ -1,4 +1,4 @@
-# Copyright (C) 2018 Bremer Computer Security B.V.
+# Copyright (C) 2018 Hatching B.V.
 # This file is licensed under the MIT License, see also LICENSE.
 
 import logging
@@ -17,7 +17,7 @@ class Component:
 
 class WSGIComponent(Component):
     """A component that starts an WSGI application"""
-    bind = ":8080"
+    bind = None
     ws = False
     app = None
 

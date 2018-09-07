@@ -1,4 +1,4 @@
-# Copyright (C) 2018 Bremer Computer Security B.V.
+# Copyright (C) 2018 Hatching B.V.
 # This file is licensed under the MIT License, see also LICENSE.
 
 import json
@@ -14,6 +14,7 @@ log = logging.getLogger(__name__)
 r_valid_hash = re.compile(r"^[a-zA-Z0-9]+$")
 
 ipfs_host = None
+ipfs_apikey = None
 cache_path = None
 
 class IPFSNotFoundError(Exception):
@@ -31,14 +32,20 @@ def ipfs_download(hash, uri=None):
             log.debug("Fetching IPFS hash %s (%s)", hash, uri)
         else:
             log.debug("Fetching IPFS hash %s", hash)
-        req = requests.get("http://%s/artifacts/%s" % (ipfs_host, uri))
-        log.debug("Download status: %s", req.status_code)
-        if req.status_code == 404:
+
+        headers = {
+            "Authorization": "Bearer %s" % ipfs_apikey,
+        }
+        r = requests.get(
+            "https://%s/artifacts/%s" % (ipfs_host, uri), headers=headers
+        )
+        log.debug("Download status: %s", r.status_code)
+        if r.status_code == 404:
             raise IPFSNotFoundError
-        req.raise_for_status()
+        r.raise_for_status()
         with AtomicWrite(path) as fp:
             # TODO: small writes
-            fp.write(req.content)
+            fp.write(r.content)
     return path
 
 def ipfs_open(hash, uri=None):

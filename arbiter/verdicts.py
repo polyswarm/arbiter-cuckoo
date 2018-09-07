@@ -1,4 +1,4 @@
-# Copyright (C) 2018 Bremer Computer Security B.V.
+# Copyright (C) 2018 Hatching B.V.
 # This file is licensed under the MIT License, see also LICENSE.
 
 """
@@ -104,6 +104,7 @@ class VerdictComponent(Component):
         for av in avs:
             log.warning("Job %s expired", av.id)
             av.status = JOB_STATUS_FAILED
+            # TODO: call backend.cancel_artifact
             s.add(av)
             notify_tasks.add(av.artifact_id)
         s.commit()
@@ -127,6 +128,33 @@ class VerdictComponent(Component):
         for a in avs:
             dispatch_event("verdict_jobs", None, a)
 
+    @event("verdict_update_async")
+    def verdict_update_async(self, artifact_verdict_id, verdict):
+        """Internal polling has resulted in an artifact verdict."""
+        s = DbSession()
+        try:
+            av = s.query(DbArtifactVerdict).with_for_update() \
+                .get(artifact_verdict_id)
+            artifact_id = av.artifact_id
+            if av.status != JOB_STATUS_PENDING:
+                log.warning("Task result for artifact #%s (%s) already made",
+                            artifact_id, av.backend)
+                return
+            if verdict is False:
+                log.warning("Task failed for artifact #%s (%s)", artifact_id,
+                            av.backend)
+                av.status = JOB_STATUS_FAILED
+            else:
+                log.debug("Task for artifact #%s (%s) complete", artifact_id,
+                            av.backend)
+                av.verdict = verdict
+                av.status = JOB_STATUS_DONE
+            s.add(av)
+            s.commit()
+            dispatch_event("verdict_update", artifact_id)
+        finally:
+            s.close()
+
     @event("verdict_update")
     def verdict_update(self, artifact_id):
         """Recompute final verdict for an artifact and trigger bounty settle if
@@ -135,8 +163,7 @@ class VerdictComponent(Component):
 
         s = DbSession()
 
-        artifact = s.query(DbArtifact).with_for_update() \
-            .filter_by(id=artifact_id).one()
+        artifact = s.query(DbArtifact).with_for_update().get(artifact_id)
         if artifact.processed:
             log.warning("Verdict for artifact #%s already made", artifact_id)
             s.close()
@@ -184,7 +211,7 @@ class VerdictComponent(Component):
             .filter_by(artifact_id=artifact.id, status=JOB_STATUS_NEW)
 
         for av in avs.all():
-            submit.append((av.id, av.backend, artifact))
+            submit.append((av.id, av.backend, artifact, av.meta))
             av.status = JOB_STATUS_SUBMITTING
             s.add(av)
 
@@ -204,12 +231,12 @@ class VerdictComponent(Component):
                   DbArtifactVerdict.expires: None}
 
         try:
-            for av_id, backend, artifact in jobs:
+            for av_id, backend, artifact, previous_task in jobs:
                 # Just in case a backend is removed
                 a = analysis_backends.get(backend)
                 if a:
                     log.debug("Submitting job #%s to %s", av_id, backend)
-                    task = gevent.spawn(a.submit_artifact, artifact)
+                    task = gevent.spawn(a.submit_artifact, av_id, artifact, previous_task)
                     task_ids[id(task)] = av_id
                     tasks.append(task)
                 else:
@@ -226,6 +253,12 @@ class VerdictComponent(Component):
                                          DbArtifactVerdict.verdict: task.value,
                                          DbArtifactVerdict.meta: None,
                                          DbArtifactVerdict.expires: None}
+                elif "verdict" in task.value:
+                    verdict = task.value.pop("verdict")
+                    job_status[av_id] = {DbArtifactVerdict.status: JOB_STATUS_DONE,
+                                         DbArtifactVerdict.verdict: verdict,
+                                         DbArtifactVerdict.meta: task.value,
+                                         DbArtifactVerdict.expires: None}
                 else:
                     job_status[av_id] = {DbArtifactVerdict.status: JOB_STATUS_PENDING,
                                          DbArtifactVerdict.meta: task.value,
@@ -235,7 +268,7 @@ class VerdictComponent(Component):
             # Record results
             s = DbSession()
             reeval = False
-            for av_id, backend, artifact in jobs:
+            for av_id, backend, artifact, previous_task in jobs:
                 fields = job_status.get(av_id, failed)
                 status = fields[DbArtifactVerdict.status]
                 log.debug("Recording job result #%s of %s (r=%s)", av_id,

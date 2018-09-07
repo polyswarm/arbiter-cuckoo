@@ -1,4 +1,4 @@
-# Copyright (C) 2018 Bremer Computer Security B.V.
+# Copyright (C) 2018 Hatching B.V.
 # This file is licensed under the MIT License, see also LICENSE.
 
 import requests
@@ -13,7 +13,7 @@ class Modified(AnalysisBackend):
         self.cuckoo_url = url
         self.options = config.get("options")
 
-    def submit_artifact(self, artifact):
+    def submit_artifact(self, av_id, artifact, previous_task=None):
         body = {}
         if self.options:
             body["options"] = self.options

@@ -1,16 +1,16 @@
-# Copyright (C) 2018 Bremer Computer Security B.V.
+# Copyright (C) 2018 Hatching B.V.
 # This file is licensed under the MIT License, see also LICENSE.
 
 import setuptools
 
 setuptools.setup(
     name="arbiter",
-    version="0.3.1",
-    author="Jurriaan Bremer",
-    author_email="jbr@cuckoo.sh",
+    version="0.3.2",
+    author="Hatching B.V.",
+    author_email="info@hatching.io",
     packages=setuptools.find_packages(),
     zip_safe=False,
-    url="https://cuckoo.sh/",
+    url="https://hatching.io/",
     license="MIT License",
     description="PolySwarm Arbiter backend",
     long_description=open("README.rst", "rb").read().decode(),
