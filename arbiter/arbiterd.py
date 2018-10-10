@@ -49,6 +49,8 @@ class Arbiterd(object):
         self.wallet = {}
 
     def stake(self, amount):
+        self.polyswarm.wait_online()
+        self.polyswarm.set_base_nonce()
         return self.polyswarm.staking_deposit(amount)
 
     def run(self):
@@ -57,6 +59,7 @@ class Arbiterd(object):
         ipfs.cache_path = self.config.artifacts
 
         self.polyswarm.wait_online()
+        self.polyswarm.set_base_nonce()
         self.polyswarm.set_windows()
         self.polyswarm.check_staking_requirements()
         reset_pending_jobs()

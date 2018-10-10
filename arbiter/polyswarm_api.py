@@ -7,6 +7,7 @@ import requests
 import six
 import time
 
+from gevent.lock import Semaphore
 from web3.auto import w3 as web3
 
 log = logging.getLogger(__name__)
@@ -32,7 +33,8 @@ class PolySwarmAPI(object):
         self.account_privkey = account_privkey
         self.chain = chain
         self.minimum_stake = minimum_stake
-        self.base_nonce = random.randint(0, 0xFFFFFFFF)
+        self.base_nonce = 0
+        self.base_nonce_lock = Semaphore()
 
     def wait_online(self, tries=30):
         for _ in range(tries):
@@ -43,6 +45,10 @@ class PolySwarmAPI(object):
                 pass
             time.sleep(1)
         raise IOError("Polyswarm host at %s not line" % self.host)
+
+    def set_base_nonce(self):
+        with self.base_nonce_lock:
+            self.base_nonce = self(requests.get, "/nonce")
 
     def set_windows(self):
         reveal = self(requests.get, "bounties/window/reveal")
@@ -72,7 +78,7 @@ class PolySwarmAPI(object):
 
     def staking_deposit(self, amount):
         return self(
-            requests.post, "staking/deposit?account=%s" % (self.account),
+            requests.post, "staking/deposit",
             {"amount": str(amount)}, sign=True
         )
 
@@ -94,54 +100,73 @@ class PolySwarmAPI(object):
         return self(requests.get, "bounties/%s/assertions" % guid)
 
     def vote_bounty(self, guid, verdicts):
-        args = (guid, self.account, self.chain)
+        args = (guid, self.chain)
         self(
-            requests.post, "bounties/%s/vote?account=%s&chain=%s" % args,
+            requests.post, "bounties/%s/vote?chain=%s" % args,
             {"verdicts": verdicts, "valid_bloom": False},
             sign=True
         )
 
     def settle_bounty(self, guid):
-        args = (guid, self.account, self.chain)
+        args = (guid, self.chain)
         self(
-            requests.post, "bounties/%s/settle?account=%s&chain=%s" % args,
+            requests.post, "bounties/%s/settle&chain=%s" % args,
             sign=True
         )
 
     def __call__(self, method, path, args=None, sign=False):
-        headers = {
-            "Authorization": "Bearer %s" % self.apikey,
-        }
-        if sign:
+        headers = {}
+        if self.apikey:
+            headers = {
+                "Authorization": "Bearer %s" % self.apikey,
+            }
+        else:
             if "?" in path:
-                path += "&base_nonce=%s" % self.base_nonce
+                path += "&account=%040x" % self.account
             else:
-                path += "?base_nonce=%s" % self.base_nonce
-            self.base_nonce += 2
-        resp = method(
-            "https://%s/%s" % (self.host, path), json=args,
-            headers=headers, timeout=120
-        )
-        try:
-            r = resp.json()
-        except ValueError:
-            if resp.status_code == 404:
-                raise ValueError("404 on %s" % path)
-        if resp.status_code == 404:
-            raise PolySwarmNotFound(resp.status_code, r.get("status"), resp.reason)
-        elif resp.status_code != 200:
-            raise PolySwarmError(resp.status_code, r.get("message"), resp.reason)
-        if r.get("status") != "OK":
-            raise PolySwarmError(resp.status_code, r.get("status"))
-        r = r.get("result")
-        if sign:
-            signed = []
-            for tx in r.get("transactions", []):
-                s = web3.eth.account.signTransaction(tx, self.account_privkey)
-                signed.append(bytes(s["rawTransaction"]).hex())
+                path += "?account=%040x" % self.account
 
+        # Release base nonce lock if acquired at end of this block
+        try:
+            if sign:
+                self.base_nonce_lock.acquire()
+                if "?" in path:
+                    path += "&base_nonce=%s" % self.base_nonce
+                else:
+                    path += "?base_nonce=%s" % self.base_nonce
+
+            resp = method(
+                "https://%s/%s" % (self.host, path), json=args,
+                headers=headers, timeout=120
+            )
+            try:
+                r = resp.json()
+            except ValueError:
+                if resp.status_code == 404:
+                    raise ValueError("404 on %s" % path)
+            if resp.status_code == 404:
+                raise PolySwarmNotFound(resp.status_code, r.get("status"), resp.reason)
+            elif resp.status_code != 200:
+                raise PolySwarmError(resp.status_code, r.get("message"), resp.reason)
+            if r.get("status") != "OK":
+                raise PolySwarmError(resp.status_code, r.get("status"))
+            r = r.get("result")
+            if sign:
+                signed = []
+                txs = r.get("transactions", [])
+                for tx in txs:
+                    s = web3.eth.account.signTransaction(tx, self.account_privkey)
+                    signed.append(bytes(s["rawTransaction"]).hex())
+
+                self.base_nonce += len(txs)
+        finally:
+            if self.base_nonce_lock.locked():
+                self.base_nonce_lock.release()
+
+        if sign:
             # TODO Error checking - did the transaction succeed?
-            self(requests.post, "transactions", {"transactions": signed})
+            return self(requests.post, "transactions", {"transactions": signed})
+
         return r
 
 class Address(object):
