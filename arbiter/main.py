@@ -77,13 +77,13 @@ def run(ctx, manual):
 def stake(ctx, amount):
     p = Arbiterd(ctx.meta["config"])
 
-    print("making staking deposit of %d wei (NCT).." % amount)
+    print("Making staking deposit of %d wei (NCT).." % amount)
 
     if not p.stake(amount):
         print("ERROR: failed to make staking deposit")
         exit(-1)
 
-    print("Staking went successfully.")
+    print("Staking was successful.")
 
 @cli.command()
 @click.argument("bounty")

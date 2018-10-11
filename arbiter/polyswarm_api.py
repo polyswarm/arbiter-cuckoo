@@ -2,11 +2,11 @@
 # This file is licensed under the MIT License, see also LICENSE.
 
 import logging
-import random
 import requests
 import six
 import time
 
+from gevent.lock import Semaphore
 from web3.auto import w3 as web3
 
 log = logging.getLogger(__name__)
@@ -32,7 +32,8 @@ class PolySwarmAPI(object):
         self.account_privkey = account_privkey
         self.chain = chain
         self.minimum_stake = minimum_stake
-        self.base_nonce = random.randint(0, 0xFFFFFFFF)
+        self.base_nonce = 0
+        self.base_nonce_lock = Semaphore()
 
     def wait_online(self, tries=30):
         for _ in range(tries):
@@ -42,15 +43,18 @@ class PolySwarmAPI(object):
             except IOError:
                 pass
             time.sleep(1)
-        raise IOError("Polyswarm host at %s not line" % self.host)
+        raise IOError("Polyswarm host at %s not online" % self.host)
 
-    def set_windows(self):
-        reveal = self(requests.get, "bounties/window/reveal")
-        self.reveal_window = reveal["blocks"]
+    def set_base_nonce(self):
+        with self.base_nonce_lock:
+            self.base_nonce = self(requests.get, "nonce")
+            log.info("Base nonce: %s", self.base_nonce)
+
+    def set_params(self):
+        params = self(requests.get, "bounties/parameters")
+        self.reveal_window = params["assertion_reveal_window"]
         log.info("Assertion reveal window: %s", self.reveal_window)
-
-        vote = self(requests.get, "bounties/window/vote")
-        self.vote_window = vote["blocks"]
+        self.vote_window = params["arbiter_vote_window"]
         log.info("Vote window: %s", self.vote_window)
 
     def check_staking_requirements(self):
@@ -59,7 +63,8 @@ class PolySwarmAPI(object):
         if staking_balance < self.minimum_stake:
             raise PolySwarmError(
                 "FATAL",
-                "Insufficient funds staked! (minimum: %d, have: %d, need: %d)" % (
+                "Insufficient funds staked! (minimum: %d, have: %d, need: %d)"
+                % (
                     self.minimum_stake, staking_balance,
                     (self.minimum_stake - staking_balance)
                 )
@@ -71,9 +76,8 @@ class PolySwarmAPI(object):
         return self(requests.get, "balances/%s/%s" % (account, kind))
 
     def staking_deposit(self, amount):
-        return self(
-            requests.post, "staking/deposit?account=%s" % (self.account),
-            {"amount": str(amount)}, sign=True
+        return self.req_and_sign(
+            requests.post, "staking/deposit", {"amount": str(amount)}
         )
 
     def staking_balance_total(self):
@@ -94,55 +98,68 @@ class PolySwarmAPI(object):
         return self(requests.get, "bounties/%s/assertions" % guid)
 
     def vote_bounty(self, guid, verdicts):
-        args = (guid, self.account, self.chain)
-        self(
-            requests.post, "bounties/%s/vote?account=%s&chain=%s" % args,
+        self.req_and_sign(
+            requests.post, "bounties/%s/vote" % guid,
             {"verdicts": verdicts, "valid_bloom": False},
-            sign=True
+            params={"chain": self.chain}
         )
 
     def settle_bounty(self, guid):
-        args = (guid, self.account, self.chain)
-        self(
-            requests.post, "bounties/%s/settle?account=%s&chain=%s" % args,
-            sign=True
+        self.req_and_sign(
+            requests.post, "bounties/%s/settle" % guid,
+            params={"chain": self.chain}
         )
 
-    def __call__(self, method, path, args=None, sign=False):
+    def __call__(self, method, path, args=None, params=None):
         headers = {
             "Authorization": "Bearer %s" % self.apikey,
         }
-        if sign:
-            if "?" in path:
-                path += "&base_nonce=%s" % self.base_nonce
-            else:
-                path += "?base_nonce=%s" % self.base_nonce
-            self.base_nonce += 2
+        params = params or {}
+        params["account"] = self.account
+
         resp = method(
             "https://%s/%s" % (self.host, path), json=args,
-            headers=headers, timeout=120
+            params=params, headers=headers, timeout=120
         )
+        if resp.status_code == 404:
+            raise PolySwarmNotFound(
+                resp.status_code, resp.reason
+            )
+        if resp.status_code != 200:
+            raise PolySwarmError(
+                resp.status_code, resp.reason
+            )
+
         try:
             r = resp.json()
         except ValueError:
-            if resp.status_code == 404:
-                raise ValueError("404 on %s" % path)
-        if resp.status_code == 404:
-            raise PolySwarmNotFound(resp.status_code, r.get("status"), resp.reason)
-        elif resp.status_code != 200:
-            raise PolySwarmError(resp.status_code, r.get("message"), resp.reason)
+            raise PolySwarmError(resp.status_code, r)
+
         if r.get("status") != "OK":
             raise PolySwarmError(resp.status_code, r.get("status"))
-        r = r.get("result")
-        if sign:
-            signed = []
-            for tx in r.get("transactions", []):
-                s = web3.eth.account.signTransaction(tx, self.account_privkey)
+
+        return r.get("result")
+
+    def req_and_sign(self, method, path, args=None, params=None):
+        with self.base_nonce_lock:
+            params = params or {}
+            params["base_nonce"] = self.base_nonce
+
+            r = self(method, path, args, params)
+
+            signed, transactions = [], r.get("transactions", [])
+            for transaction in transactions:
+                s = web3.eth.account.signTransaction(
+                    transaction, self.account_privkey
+                )
                 signed.append(bytes(s["rawTransaction"]).hex())
 
-            # TODO Error checking - did the transaction succeed?
-            self(requests.post, "transactions", {"transactions": signed})
-        return r
+            self.base_nonce += len(transactions)
+
+        # TODO Error checking - did the transaction succeed?
+        return self(
+            requests.post, "transactions", {"transactions": signed}
+        )
 
 class Address(object):
     def __init__(self, addr):

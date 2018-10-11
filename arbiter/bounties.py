@@ -263,7 +263,7 @@ class BountyComponent(Component):
 
         # Download related files
         try:
-            manifest = ipfs_json(bounty["uri"])
+            manifest = ipfs_json(bounty["uri"], cache=False)
         except IPFSNotFoundError:
             # Shouldn't happen in production
             return
