@@ -49,8 +49,8 @@ def _add_event(events, lst, key, name, *args):
     if key not in lst:
         lst.add(key)
         events.append((name, args))
-    else:
-        log.debug("Skip %s %s (pending)", name, key)
+    #else:
+    #    log.debug("Skip %s %s (pending)", name, key)
 
 class BountyComponent(Component):
     """Keep track of bounties"""
@@ -67,6 +67,8 @@ class BountyComponent(Component):
         self.is_revealing = set()
         self.is_voting = set()
         self.is_settling = set()
+
+        self.first = True
 
     @event("block")
     def block_updated(self, block_number):
@@ -90,7 +92,7 @@ class BountyComponent(Component):
         bounties = s.query(DbBounty).filter_by(status="active") \
             .filter(or_(
                 # Can vote
-                and_(DbBounty.voted.is_(False), self.cur_block >= DbBounty.expiration_block, DbBounty.truth_value.isnot(None)),
+                and_(DbBounty.voted.is_(False), self.cur_block >= DbBounty.vote_after, DbBounty.truth_value.isnot(None)),
                 # Can reveal (independent from voting)
                 and_(DbBounty.revealed.is_(False), self.cur_block >= DbBounty.reveal_block, DbBounty.assertions.is_(None)),
                 # Can settle (must have voted)
@@ -101,7 +103,7 @@ class BountyComponent(Component):
         for b in bounties:
             if not b.voted and b.truth_value is not None:
                 _add_event(events, self.is_voting, b.guid,
-                           "bounty_vote", b.guid, b.truth_value, b.vote_block)
+                           "bounty_vote", b.guid, b.truth_value, b.vote_before)
             if not b.revealed and self.cur_block >= b.reveal_block:
                 _add_event(events, self.is_revealing, b.guid,
                            "bounty_assertions_reveal", b.guid, b.truth_value)
@@ -135,27 +137,27 @@ class BountyComponent(Component):
         return experts_disagree
 
     @event("bounty_vote", serialize=False)
-    def bounty_vote(self, guid, value, vote_block):
+    def bounty_vote(self, guid, value, vote_before):
         """Propagate bounty vote value to PolySwarm"""
         if not value:
             log.error("%s | Bad bounty_vote call %r", guid, value)
             self.is_voting.discard(guid)
             return
 
-        log.info("%s | Vote on bounty: %s", guid, verdict_show(value))
+        log.info("%s | %s | Vote on bounty: %s", guid, self.cur_block, verdict_show(value))
         try:
             self.polyswarm.vote_bounty(guid, value)
             perm_fail = False
         except PolySwarmError as e:
             log.error("%s | Voting error: %s", guid, e.message or e.reason)
-            if e.status >= 500 and self.cur_block < vote_block:
+            if e.status >= 500 and self.cur_block < vote_before:
                 # Server booboo, so try again later
                 self.is_voting.discard(guid)
                 return
             # Abort
             perm_fail = True
 
-        # TODO: if voting took place >= bounty.vote_block and we didn't manage
+        # TODO: if voting took place >= bounty.vote_before and we didn't manage
         # to, we've failed!
 
         s = DbSession()
@@ -252,6 +254,7 @@ class BountyComponent(Component):
         s.close()
 
         self.is_settling.discard(guid)
+        log.info("%s | Settled!", guid)
         dispatch_event("bounty_settled", guid)
 
     @event("bounty", serialize=32)
@@ -260,6 +263,11 @@ class BountyComponent(Component):
 
         if bounty.get("resolved"):
             return
+
+        #if self.first:
+        #    self.first = False
+        #else:
+        #    return
 
         # Download related files
         try:
@@ -296,7 +304,8 @@ class BountyComponent(Component):
             num_artifacts=num_artifacts,
 
             expiration_block=expiration,
-            vote_block=expiration + self.polyswarm.vote_window,
+            vote_after=expiration + self.polyswarm.reveal_window,
+            vote_before=expiration + self.polyswarm.vote_window,
             reveal_block=expiration + self.polyswarm.vote_window + self.polyswarm.reveal_window,
             settle_block=expiration + self.polyswarm.vote_window + self.polyswarm.reveal_window
         )
@@ -377,12 +386,12 @@ class BountyComponent(Component):
 
         # This may happen *after* the voting window, in that case mark
         # the bounty as aborted
-        if self.cur_block and self.cur_block >= bounty.vote_block:
+        if self.cur_block and self.cur_block >= bounty.vote_before:
             guid = None
             if bounty.status != "aborted":
                 log.error("%s | Bounty artifact verdicts came in too late:"
                           " at block %s, voting ended on %s!",
-                          bounty.guid, self.cur_block, bounty.vote_block)
+                          bounty.guid, self.cur_block, bounty.vote_before)
                 bounty.status = "aborted"
                 guid = bounty.guid
                 s.add(bounty)
@@ -398,7 +407,7 @@ class BountyComponent(Component):
             .order_by(DbArtifact.id).all()
         verdicts = []
         record_value = True
-        can_vote = self.cur_block and self.cur_block >= bounty.expiration_block
+        can_vote = self.cur_block and self.cur_block >= bounty.vote_after
         transition_manual = False
         for artifact in artifacts:
             if not artifact.processed:
@@ -420,7 +429,7 @@ class BountyComponent(Component):
         ## In case artifact verdicts came in after settle block
         #if bounty.assertions and not transition_manual:
         #    transition_manual = self._bounty_assertions_disagree(bounty.guid, verdicts, bounty.assertions)
-        vote_block = bounty.vote_block
+        vote_before = bounty.vote_before
 
         if transition_manual:
             log.debug("%s | Mark bounty as requiring manual verdict", bounty.guid)
@@ -436,7 +445,7 @@ class BountyComponent(Component):
         s.close()
         if can_vote and verdicts and guid not in self.is_voting:
             self.is_voting.add(guid)
-            dispatch_event("bounty_vote", guid, verdicts, vote_block)
+            dispatch_event("bounty_vote", guid, verdicts, vote_before)
         if transition_manual:
             dispatch_event("bounty_manual", guid)
 

@@ -61,7 +61,8 @@ class Arbiterd(object):
         self.polyswarm.wait_online()
         self.polyswarm.set_base_nonce()
         self.polyswarm.set_params()
-        self.polyswarm.check_staking_requirements()
+        if '.stage.' not in self.config.polyswarmd:
+            self.polyswarm.check_staking_requirements()
         reset_pending_jobs()
 
         load_backends(self.config.analysis_backends)

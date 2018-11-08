@@ -16,6 +16,7 @@ from arbiter.arbiterd import Arbiterd
 from arbiter.config import ConfigFile
 from arbiter.const import JOB_STATUS_NAMES, MINIMUM_STAKE_DEFAULT
 from arbiter.database import init_database
+from arbiter.utils import ColorFormatter
 
 default_conf_path = os.path.expanduser("~/.arbiter.yaml")
 
@@ -33,8 +34,13 @@ def initialize(path, clean=False):
 @click.pass_context
 def cli(ctx, debug, clean, config):
     level = logging.DEBUG if debug else logging.INFO
-    logging.basicConfig(format="%(asctime)s %(name)s %(levelname)s: %(message)s",
-                        level=level)
+    fmt = "%(asctime)s %(name)s %(levelname)s: %(message)s"
+    root = logging.getLogger()
+    stream = logging.StreamHandler()
+    stream.setFormatter(ColorFormatter(fmt))
+    root.setLevel(level)
+    root.addHandler(stream)
+
     logging.getLogger("urllib3").setLevel(logging.WARNING)
 
     if not ctx.invoked_subcommand:
@@ -45,6 +51,10 @@ def cli(ctx, debug, clean, config):
         if not os.path.exists(config):
             sys.exit("Configuration file %s not found" % config)
         ctx.meta["config"] = initialize(config, clean)
+        host = ctx.meta["config"].polyswarmd
+        logfile = logging.FileHandler("arbiter.%s.log" % host)
+        logfile.setFormatter(logging.Formatter(fmt))
+        root.addHandler(logfile)
 
 @cli.command()
 @click.pass_context
@@ -120,7 +130,7 @@ def bounties():
         print(b.status.ljust(8),
               b.guid,
               S[b.truth_manual] + S[b.revealed] + S[b.voted]  + S[b.settled],
-               str(b.vote_block).ljust(5),
+               str(b.vote_before).ljust(5),
                str(b.settle_block).ljust(7),
               value.ljust(5),
               )

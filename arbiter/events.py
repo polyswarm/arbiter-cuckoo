@@ -19,6 +19,7 @@ class Events(Component):
     def __init__(self, parent):
         self.polyswarm = parent.polyswarm
         self.uri = "wss://%s/events" % parent.config.polyswarmd
+        self.account = parent.polyswarm.account.lower()
 
     def on_message(self, message):
         obj = json.loads(message)
@@ -42,12 +43,17 @@ class Events(Component):
         elif obj["event"] == "connected":
             dispatch_event("connected", obj["data"])
 
+        elif obj["event"] == "reveal":
+            # TODO
+            pass
+
+        elif obj["event"] == "quorum":
+            pass
+
         elif obj["event"] == "settled_bounty":
             data = obj["data"]
-            log.debug(
-                "Settled bounty: settler=%s block=%s", data["settler"],
-                data["settled_block"])
-
+            if self.account == data["settler"].lower():
+                dispatch_event("polyswarm_bounty_settled", data["bounty_guid"])
         else:
             log.debug("Unhandled event: %r", obj)
 

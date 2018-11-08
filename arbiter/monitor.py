@@ -3,8 +3,8 @@
 
 import gevent
 import logging
-import random
 import requests
+import time
 
 from arbiter.backends import analysis_backends
 from arbiter.component import Component
@@ -20,10 +20,49 @@ def broadcast(kind, data, remember=True):
     for c in ui_broadcast_ws:
         gevent.spawn(send, c, kind, data)
 
+class PrometheusMonitor:
+    def __init__(self):
+        self.level = logging.ERROR  # Terrible hack
+        self.metrics = {"arbiter_errors": 0,
+                        "arbiter_jobs_submitted": 0,
+                        "polyswarm_settled": 0,
+                        "arbiter_artifacts_completed": 0}
+        self.errors = 0
+
+    def server(self, bind):
+        self.track("arbiter_started", int(time.time()))
+        host, port = bind.split(":")
+        gevent.pywsgi.WSGIServer((host, int(port)), self).serve_forever()
+
+    def handle(self, record):
+        if record.levelno >= logging.ERROR:
+            self.errors += 1
+            self.track("arbiter_errors", self.errors)
+
+    def track(self, key, value):
+        self.metrics[key] = value
+
+    def count(self, key, n=1):
+        self.metrics[key] = self.metrics.get(key, 0) + n
+
+    def __call__(self, environ, start_response):
+        if environ.get("PATH_INFO") != "/probe":
+            start_response("404 Not Found", [])
+            return []
+        start_response("200 OK", [("Content-Type", "text/plain")])
+        r = ""
+        for k, v in self.metrics.items():
+            r += "# TYPE gauge\n%s %s\n" % (k, v)
+        return [r.encode("utf8")]
+
 class MonitorComponent(Component):
     def __init__(self, parent):
         self.wallet = parent.wallet
         self.polyswarm = parent.polyswarm
+
+        self.metrics = PrometheusMonitor()
+        logging.getLogger().addHandler(self.metrics)
+        gevent.spawn(self.metrics.server, parent.config.monitor_bind)
 
         # We keep track of the starting time of polyswarmd such that we can
         # reset (i.e., early exit) the Arbiter if we're in testing mode (i.e.,
@@ -34,6 +73,7 @@ class MonitorComponent(Component):
     @event("block")
     def block(self, block_number):
         broadcast("counter-block", block_number)
+        self.metrics.track("polyswarm_block", block_number)
 
     @event("connected")
     def connected(self, data):
@@ -47,6 +87,14 @@ class MonitorComponent(Component):
             )
             exit(0)
 
+    @event("metrics_jobs_submitted")
+    def metrics_jobs_submitted(self, num_jobs):
+        self.metrics.count("arbiter_jobs_submitted", num_jobs)
+
+    @event("metrics_artifact_complete")
+    def metrics_artifact_complete(self, num_artifacts):
+        self.metrics.count("arbiter_artifacts_completed", )
+
     @event("bounty_manual")
     def bounty_manual(self, guid):
         # Tell WS clients to recheck pending bounties
@@ -55,10 +103,16 @@ class MonitorComponent(Component):
     @event("bounty_voted")
     def bounty_voted(self, guid, value):
         broadcast("bounties-voted", {"guid": guid, "value": value}, False)
+        self.metrics.count("arbiter_voted")
 
     @event("bounty_settled")
     def bounty_settled(self, guid):
         broadcast("bounties-settled", {"guid": guid}, False)
+        #self.metrics.count("arbiter_settled")
+
+    @event("polyswarm_bounty_settled")
+    def polyswarm_bounty_settled(self, guid):
+        self.metrics.count("polyswarm_settled")
 
     @periodicx(minutes=5)
     def health_check(self):
@@ -77,7 +131,6 @@ class MonitorComponent(Component):
             backends[name] = report
 
         broadcast("backends", backends)
-
 
     @periodicx(minutes=1)
     def update_wallet(self):

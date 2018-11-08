@@ -30,6 +30,7 @@ parser.add_argument("-p", "--pending", type=int, default=200, help="Maximum tota
 parser.add_argument("-a", "--artifacts", type=int, default=3, help="Maximum artifacts per bounty")
 parser.add_argument("-A", "--assertions", type=int, default=10, help="Maximum assertions per bounty")
 parser.add_argument("-g", "--generate", type=int, default=50, help="Number of bounties to generate over time")
+parser.add_argument("-B", "--bind", default=":8091")
 
 EXPIRATION_WINDOW = 5
 ARBITER_VOTE_WINDOW = 25
@@ -373,7 +374,7 @@ def cuckoo_status():
         "version": "2.0.6"
     })
 
-def run_server(bind=":8091"):
+def run_server(bind):
     host, port = bind.split(":")
     log.info("Starting server for %r on %r", app, bind)
     ws = {"/events": stream_events}
@@ -408,7 +409,8 @@ def job_processor():
     while True:
         url, backend  = jobs.get()
         log.info("Submit %s for %s", url, backend)
-        v = random.choice([0, 50, 100] * 3 + [None])
+        #v = random.choice([0, 50, 100] * 3 + [None])
+        v = random.choice([0, 100])
         try:
             token = API_TOKENS.get(backend)
             r = requests.post(
@@ -424,4 +426,4 @@ if __name__ == "__main__":
                         level=logging.INFO)
     gevent.spawn(job_processor)
     gevent.spawn(block_miner)
-    run_server()
+    run_server(ARGS.bind)

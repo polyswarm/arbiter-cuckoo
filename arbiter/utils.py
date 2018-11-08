@@ -3,6 +3,7 @@
 
 import hashlib
 import hmac
+import logging
 import os
 import tempfile
 import time
@@ -86,3 +87,19 @@ def validate_token(secret, token):
     if hmac.compare_digest(h.hexdigest(), parts[2]):
         return parts[0]
     return False
+
+GRAYOUT = "\033[38;5;250m"
+ALERT = "\033[38;5;220m"
+RESET = "\033[0m"
+
+class ColorFormatter(logging.Formatter):
+    def __init__(self, msg):
+        logging.Formatter.__init__(self, msg)
+
+    def format(self, record):
+        if record.levelno >= logging.WARNING:
+            record.levelname = ALERT + record.levelname + RESET
+        formatted = logging.Formatter.format(self, record)
+        if record.levelno == logging.DEBUG:
+            formatted = GRAYOUT + formatted + RESET
+        return formatted

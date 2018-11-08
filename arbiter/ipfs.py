@@ -23,10 +23,10 @@ class IPFSNotFoundError(Exception):
 def _ipfs_download(hash, uri):
     if uri is None:
         uri = hash
-    if hash != uri:
-        log.debug("Fetching IPFS hash %s (%s)", hash, uri)
-    else:
-        log.debug("Fetching IPFS hash %s", hash)
+    #if hash != uri:
+    #    log.debug("Fetching IPFS hash %s (%s)", hash, uri)
+    #else:
+    #    log.debug("Fetching IPFS hash %s", hash)
 
     headers = {
         "Authorization": "Bearer %s" % ipfs_apikey,
@@ -34,8 +34,8 @@ def _ipfs_download(hash, uri):
     r = requests.get(
         "https://%s/artifacts/%s" % (ipfs_host, uri), headers=headers
     )
-    #log.debug("Download status: %s", r.status_code)
     if r.status_code == 404:
+        log.warning("IPFS URI %r 404", uri)
         raise IPFSNotFoundError(uri)
     r.raise_for_status()
     return r.content

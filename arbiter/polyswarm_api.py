@@ -28,8 +28,14 @@ class PolySwarmAPI(object):
                  minimum_stake, chain="home"):
         self.host = host
         self.apikey = apikey
-        self.account = account
         self.account_privkey = account_privkey
+        a = web3.eth.account.privateKeyToAccount(account_privkey)
+        self.account = a.address
+        if account:
+            if self.account != account:
+                log.warn("Oops, you didn't configure the correct public key!")
+                raise ValueError((self.account, account))
+        log.info("Public key: %s", self.account)
         self.chain = chain
         self.minimum_stake = minimum_stake
         self.base_nonce = 0
@@ -117,26 +123,32 @@ class PolySwarmAPI(object):
         params = params or {}
         params["account"] = self.account
 
+        #_params = "&".join("%s=%s" % kv for kv in params.items())
+        #log.debug("polyswarm: //%s/%s?%s", self.host, path, _params)
+        #if args: log.debug("Payload: %r", args)
+
         resp = method(
             "https://%s/%s" % (self.host, path), json=args,
             params=params, headers=headers, timeout=120
         )
-        if resp.status_code == 404:
-            raise PolySwarmNotFound(
-                resp.status_code, resp.reason
-            )
-        if resp.status_code != 200:
-            raise PolySwarmError(
-                resp.status_code, resp.reason
-            )
 
+        if resp.status_code == 404:
+            raise PolySwarmNotFound(resp.status_code, resp.reason)
         try:
             r = resp.json()
         except ValueError:
-            raise PolySwarmError(resp.status_code, r)
+            # XXX
+            log.error("Invalid JSON! Status: %s Text: %s", resp.status_code, resp.text)
+            raise PolySwarmError(resp.status_code, resp.reason)
 
         if r.get("status") != "OK":
-            raise PolySwarmError(resp.status_code, r.get("status"))
+            msg = "%s: %s" % (r.get("status"), r.get("errors"))
+            raise PolySwarmError(resp.status_code, msg)
+
+        elif resp.status_code < 200 or resp.status_code > 299:
+            # Error, but not explicit status?
+            log.error("Status: %s Text: %s", resp.status_code, resp.text)
+            raise PolySwarmError(resp.status_code, resp.reason)
 
         return r.get("result")
 
@@ -157,9 +169,15 @@ class PolySwarmAPI(object):
             self.base_nonce += len(transactions)
 
         # TODO Error checking - did the transaction succeed?
-        return self(
+        r = self(
             requests.post, "transactions", {"transactions": signed}
         )
+        if not r:
+            #raise PolySwarmError(500, "Unknown transaction failure")
+            log.warning("Potential transaction error")
+        elif r.get("errors"):
+            raise PolySwarmError(500, "\n".join(r["errors"]))
+        return r
 
 class Address(object):
     def __init__(self, addr):

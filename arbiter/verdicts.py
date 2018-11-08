@@ -160,6 +160,7 @@ class VerdictComponent(Component):
         """Recompute final verdict for an artifact and trigger bounty settle if
         needed."""
         log.debug("Artifact #%s updated", artifact_id)
+        dispatch_event("metrics_artifact_complete", 1)
 
         s = DbSession()
 
@@ -222,6 +223,7 @@ class VerdictComponent(Component):
 
     @event("verdict_job_submit", serialize=False)
     def verdict_job_submit(self, artifact_id, jobs):
+        completed = 0
         tasks = []
         task_ids = {}
         job_status = {}
@@ -229,6 +231,7 @@ class VerdictComponent(Component):
         failed = {DbArtifactVerdict.status: JOB_STATUS_FAILED,
                   DbArtifactVerdict.meta: None,
                   DbArtifactVerdict.expires: None}
+
 
         try:
             for av_id, backend, artifact, previous_task in jobs:
@@ -253,6 +256,7 @@ class VerdictComponent(Component):
                                          DbArtifactVerdict.verdict: task.value,
                                          DbArtifactVerdict.meta: None,
                                          DbArtifactVerdict.expires: None}
+                    completed += 1
                 elif "verdict" in task.value:
                     verdict = task.value.pop("verdict")
                     job_status[av_id] = {DbArtifactVerdict.status: JOB_STATUS_DONE,
@@ -288,6 +292,10 @@ class VerdictComponent(Component):
 
             if reeval:
                 dispatch_event("verdict_update", artifact_id)
+
+        dispatch_event("metrics_jobs_submitted", len(jobs))
+        if completed:
+            dispatch_event("metrics_artifact_complete", completed)
 
 def reset_pending_jobs():
     """

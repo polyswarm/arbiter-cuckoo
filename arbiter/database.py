@@ -41,8 +41,9 @@ class DbBounty(Base):
     # Expiration block for assertions
     expiration_block = Column(Integer, nullable=False)
 
+    vote_after = Column(Integer, nullable=False)
     # The time (block) **before** which we must vote on the bounty
-    vote_block = Column(Integer, nullable=False)
+    vote_before = Column(Integer, nullable=False)
     voted = Column(Boolean, nullable=False, default=False)
 
     # The time (block) at which assertions should become available
@@ -58,7 +59,7 @@ class DbBounty(Base):
     artifacts = relationship("DbArtifact",
                              backref=backref("bounty", lazy="noload"))
 
-Index("ix_bounty_voted", DbBounty.voted, DbBounty.vote_block)
+Index("ix_bounty_voted", DbBounty.voted, DbBounty.vote_after)
 Index("ix_bounty_revealed", DbBounty.revealed, DbBounty.reveal_block)
 Index("ix_bounty_settled", DbBounty.settled, DbBounty.settle_block)
 

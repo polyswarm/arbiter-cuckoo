@@ -29,8 +29,8 @@ class ConfigFile(object):
         "url": "http://localhost:9080",
         "polyswarmd": "polyswarmd.polyswarm.io",
         "apikey": "a"*32,
-        "addr": 0,
-        "addr_privkey": 0,
+        "addr": "",
+        "addr_privkey": "",
         "minimum_stake": MINIMUM_STAKE_DEFAULT,
         "dashboard_password": "",
         "api_secret": "",
@@ -40,6 +40,7 @@ class ConfigFile(object):
         "analysis_backends": {},
         "trusted_experts": [],
         "testing_mode": False,
+        "monitor_bind": "10.1.0.12:12333",
     }
 
     def __init__(self, path=None):
