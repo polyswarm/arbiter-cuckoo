@@ -23,6 +23,7 @@ class Cuckoo(AnalysisBackend):
             self.href_pattern = "%stasks/%s/view"
 
         self.api_version = config.get("api_version", "cuckoo_api")
+        self.api_token = config.get("api_token", "")
         self.options = config.get("options")
 
     def submit_artifact(self, av_id, artifact, previous_task=None):
@@ -35,8 +36,11 @@ class Cuckoo(AnalysisBackend):
             path = "api/task"
         else:
             path = "tasks/create/file"
+        headers = {"X-Arbiter": self.name}
+        if self.api_token:
+            headers["Authorization"] = "Bearer %s" % self.api_token
         req = requests.post(self.cuckoo_url + path,
-                            headers={"X-Arbiter": self.name},
+                            headers=headers,
                             data=body, files=files)
         req.raise_for_status()
         resp = req.json()
