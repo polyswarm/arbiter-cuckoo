@@ -62,7 +62,10 @@ class Cuckoo(AnalysisBackend):
                 "href": self.href_pattern % (self.cuckoo_view_url, task_id)}
 
     def health_check(self):
-        req = requests.get(self.cuckoo_url + "v1/cuckoo/status")
+        headers = {}
+        if self.api_token:
+            headers["Authorization"] = "Bearer %s" % self.api_token
+        req = requests.get(self.cuckoo_url + "v1/cuckoo/status", headers=headers)
         req.raise_for_status()
         data = req.json()
         report = {
