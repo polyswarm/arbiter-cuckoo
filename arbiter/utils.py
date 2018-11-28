@@ -33,7 +33,7 @@ def pct_agree(pct, v, n):
         return False
     return v >= (pct * n)
 
-def verdict_fromuser(s):
+def vote_fromuser(s):
     bitlist = []
     for v in s:
         if v in "tT1":
@@ -44,10 +44,10 @@ def verdict_fromuser(s):
             raise ValueError(v)
     return bitlist
 
-def verdict_show(values):
+def vote_show(values):
     return "".join(str(v)[:1].upper() for v in values)
 
-def verdict_compare(arbiter, expert, mask):
+def vote_compare(arbiter, expert, mask):
     disagree = False
     show = ""
     for v, m, x in zip(arbiter, mask, expert):

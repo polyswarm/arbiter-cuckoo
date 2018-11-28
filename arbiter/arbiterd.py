@@ -3,8 +3,6 @@
 
 # Application entry point
 
-# TODO: VerdictSource => AnalysisBackend
-
 from __future__ import print_function
 
 import gevent
@@ -12,6 +10,7 @@ import logging
 import os.path
 
 from arbiter.backends import load_backends, analysis_backends
+from arbiter.balance import BalanceComponent
 from arbiter.bounties import BountyComponent
 from arbiter.events import Events, event_register_instance
 from arbiter.monitor import MonitorComponent
@@ -27,6 +26,7 @@ class Arbiterd(object):
     """Start background components"""
     components = [
         APIComponent,
+        BalanceComponent,
         Events,
         BountyComponent,
         VerdictComponent,
@@ -40,7 +40,7 @@ class Arbiterd(object):
         self.config = config
         self.polyswarm = PolySwarmAPI(
             config.polyswarmd, config.apikey, config.addr,
-            config.addr_privkey, config.minimum_stake
+            config.addr_privkey, config.minimum_stake, config.chain
         )
 
         self.manual_mode = manual_mode
@@ -51,6 +51,11 @@ class Arbiterd(object):
     def stake(self, amount):
         self.polyswarm.wait_online()
         self.polyswarm.set_base_nonce()
+        w = self.polyswarm.staking_balance_withdrawable()
+        t = self.polyswarm.staking_balance_total()
+        log.info("Staking balance: %s / %s", w, t)
+        if amount > int(w):
+            log.error("Insufficient balance, staking will fail.")
         return self.polyswarm.staking_deposit(amount)
 
     def run(self):

@@ -31,6 +31,7 @@ class ConfigFile(object):
         "apikey": "a"*32,
         "addr": "",
         "addr_privkey": "",
+        "chain": "side",
         "minimum_stake": MINIMUM_STAKE_DEFAULT,
         "dashboard_password": "",
         "api_secret": "",

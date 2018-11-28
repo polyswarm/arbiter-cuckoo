@@ -97,19 +97,19 @@ def stake(ctx, amount):
 
 @cli.command()
 @click.argument("bounty")
-@click.argument("verdict")
-def settle(bounty, verdict):
+@click.argument("vote")
+def settle(bounty, vote):
     """Manually settle a bounty"""
     from arbiter.bounties import bounty_settle_manual
-    verdicts = []
-    for v in verdict:
+    votes = []
+    for v in vote:
         if v in 'tT1':
-            verdicts.append(True)
+            votes.append(True)
         elif v in 'fF0':
-            verdicts.append(False)
+            votes.append(False)
         else:
             raise ValueError(v)
-    bounty_settle_manual(bounty, verdicts)
+    bounty_settle_manual(bounty, votes)
 
 @cli.command()
 def bounties():

@@ -1,7 +1,6 @@
 # Copyright (C) 2018 Hatching B.V.
 # This file is licensed under the MIT License, see also LICENSE.
 
-import datetime
 import logging
 import gevent
 
@@ -15,14 +14,14 @@ from arbiter.database import DbSession, DbBounty, DbArtifact, DbArtifactVerdict
 from arbiter.events import event, periodic, dispatch_event
 from arbiter.ipfs import ipfs_json, ipfs_download, IPFSNotFoundError
 from arbiter.polyswarm_api import PolySwarmError, PolySwarmNotFound
-from arbiter.utils import pct_agree, verdict_show, verdict_compare
+from arbiter.utils import pct_agree, vote_show, vote_compare
 
 log = logging.getLogger(__name__)
 
 ARBITER_VOTE_WINDOW = 25
 ASSERTION_REVEAL_WINDOW = 25
 
-def bounty_settle_manual(guid, verdicts):
+def bounty_settle_manual(guid, votes):
     s = DbSession()
     bounty = s.query(DbBounty).with_for_update().filter_by(guid=guid).first()
 
@@ -34,12 +33,12 @@ def bounty_settle_manual(guid, verdicts):
         raise ValueError("Bounty was already voted on/settled")
 
     need = s.query(DbArtifact).filter_by(bounty_id=bounty.id).count()
-    if need != len(verdicts):
+    if need != len(votes):
         s.close()
-        raise ValueError("Need %s verdict(s), not %s" % (need, len(verdicts)))
+        raise ValueError("Need %s vote(s), not %s" % (need, len(votes)))
 
-    log.info("Manually set bounty %s verdict to %s", guid, verdicts)
-    bounty.truth_value = verdicts
+    log.info("Manually set bounty %s vote to %s", guid, votes)
+    bounty.truth_value = votes
     bounty.truth_manual = True
     s.add(bounty)
     s.commit()
@@ -119,12 +118,12 @@ class BountyComponent(Component):
         experts_disagree = False
         num_disagree = 0
         for a in assertions:
-            verdicts = fix_bitlist(a["verdicts"], len(value))
+            votes = fix_bitlist(a["votes"], len(value))
             mask = fix_bitlist(a["mask"], len(value))
-            compare = verdict_compare(value, verdicts, mask)
+            compare = vote_compare(value, votes, mask)
             if not compare:
                 continue
-            log.warning("%s | Expert %s disagrees! Their verdict: %s",
+            log.warning("%s | Expert %s disagrees! Their vote: %s",
                         guid, a["author"], compare)
             num_disagree += 1
             if a["author"] in self.trusted_experts:
@@ -144,7 +143,7 @@ class BountyComponent(Component):
             self.is_voting.discard(guid)
             return
 
-        log.info("%s | %s | Vote on bounty: %s", guid, self.cur_block, verdict_show(value))
+        log.info("%s | %s | Vote on bounty: %s", guid, self.cur_block, vote_show(value))
         try:
             self.polyswarm.vote_bounty(guid, value)
             perm_fail = False
@@ -362,13 +361,12 @@ class BountyComponent(Component):
                             bounty["guid"])
                 break
 
-        # Now that we have a bounty, we need to fetch the artifacts and
-        # start submitting it
+        # Start submitting the artifacts
         for job in job_ids:
             dispatch_event("verdict_jobs", bounty["guid"], job)
 
-    @event("bounty_artifact_verdict")
-    def bounty_artifact_verdict(self, bounty_id):
+    @event("bounty_artifact_vote")
+    def bounty_artifact_vote(self, bounty_id):
         """Check if bounty can be voted on after artifact update"""
 
         s = DbSession()
@@ -389,7 +387,7 @@ class BountyComponent(Component):
         if self.cur_block and self.cur_block >= bounty.vote_before:
             guid = None
             if bounty.status != "aborted":
-                log.error("%s | Bounty artifact verdicts came in too late:"
+                log.error("%s | Bounty artifact vote came in too late:"
                           " at block %s, voting ended on %s!",
                           bounty.guid, self.cur_block, bounty.vote_before)
                 bounty.status = "aborted"
@@ -401,51 +399,51 @@ class BountyComponent(Component):
                 dispatch_event("bounty_aborted", guid)
             return
 
-        # Collect verdicts
+        # Collect votes
         guid = bounty.guid
         artifacts = s.query(DbArtifact).filter_by(bounty_id=bounty_id) \
             .order_by(DbArtifact.id).all()
-        verdicts = []
+        votes = []
         record_value = True
         can_vote = self.cur_block and self.cur_block >= bounty.vote_after
         transition_manual = False
         for artifact in artifacts:
             if not artifact.processed:
-                log.debug("%s | Artifact #%s still has no verdict", bounty.guid,
+                log.debug("%s | Artifact #%s still has no vote", bounty.guid,
                           artifact.id)
                 record_value = can_vote = False
                 break
-            elif artifact.verdict is None:
-                log.debug("%s | Artifact #%s has DONTKNOW verdict", bounty.guid,
+            elif artifact.vote is None:
+                log.debug("%s | Artifact #%s has DONTKNOW vote", bounty.guid,
                           artifact.id)
                 can_vote = False
                 transition_manual = True
-            elif artifact.verdict >= VERDICT_MAYBE:
-                verdicts.append(True) # Malicious
+            elif artifact.vote >= VERDICT_MAYBE:
+                votes.append(True) # Malicious
             else:
-                verdicts.append(False) # Safe
+                votes.append(False) # Safe
 
         # Assertions can no longer come in before we've voted
-        ## In case artifact verdicts came in after settle block
+        ## In case artifact votes came in after settle block
         #if bounty.assertions and not transition_manual:
-        #    transition_manual = self._bounty_assertions_disagree(bounty.guid, verdicts, bounty.assertions)
+        #    transition_manual = self._bounty_assertions_disagree(bounty.guid, votes, bounty.assertions)
         vote_before = bounty.vote_before
 
         if transition_manual:
-            log.debug("%s | Mark bounty as requiring manual verdict", bounty.guid)
+            log.debug("%s | Mark bounty as requiring manual vote", bounty.guid)
             bounty.truth_manual = True
             s.add(bounty)
             s.commit()
         elif record_value:
-            log.debug("%s | Recording verdict: %s", bounty.guid,
-                      verdict_show(verdicts))
-            bounty.truth_value = verdicts
+            log.debug("%s | Recording vote: %s", bounty.guid,
+                      vote_show(votes))
+            bounty.truth_value = votes
             s.add(bounty)
             s.commit()
         s.close()
-        if can_vote and verdicts and guid not in self.is_voting:
+        if can_vote and votes and guid not in self.is_voting:
             self.is_voting.add(guid)
-            dispatch_event("bounty_vote", guid, verdicts, vote_before)
+            dispatch_event("bounty_vote", guid, votes, vote_before)
         if transition_manual:
             dispatch_event("bounty_manual", guid)
 

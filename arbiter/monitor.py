@@ -132,7 +132,7 @@ class MonitorComponent(Component):
 
         broadcast("backends", backends)
 
-    @periodicx(minutes=1)
+    @periodicx(minutes=5, seconds=7)
     def update_wallet(self):
         try:
             nct = self.polyswarm.balance("nct")

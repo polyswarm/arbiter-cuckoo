@@ -25,7 +25,7 @@ class PolySwarmNotFound(PolySwarmError):
 
 class PolySwarmAPI(object):
     def __init__(self, host, apikey, account, account_privkey,
-                 minimum_stake, chain="home"):
+                 minimum_stake, chain):
         self.host = host
         self.apikey = apikey
         self.account_privkey = account_privkey
@@ -38,7 +38,7 @@ class PolySwarmAPI(object):
         log.info("Public key: %s", self.account)
         self.chain = chain
         self.minimum_stake = minimum_stake
-        self.base_nonce = 0
+        self.base_nonce = {"side": 0, "home": 0}
         self.base_nonce_lock = Semaphore()
 
     def wait_online(self, tries=30):
@@ -53,7 +53,9 @@ class PolySwarmAPI(object):
 
     def set_base_nonce(self):
         with self.base_nonce_lock:
-            self.base_nonce = self(requests.get, "nonce")
+            side = self(requests.get, "nonce", params={"chain": "side"})
+            home = self(requests.get, "nonce", params={"chain": "home"})
+            self.base_nonce = {"side": side, "home": home}
             log.info("Base nonce: %s", self.base_nonce)
 
     def set_params(self):
@@ -76,21 +78,26 @@ class PolySwarmAPI(object):
                 )
             )
 
-    def balance(self, kind, account=None):
+    def balance(self, kind, account=None, chain=None):
         if not account:
             account = self.account
-        return self(requests.get, "balances/%s/%s" % (account, kind))
+        p = None
+        if chain:
+            p = {"chain": chain}
+        return self(requests.get, "balances/%s/%s" % (account, kind), params=p)
 
     def staking_deposit(self, amount):
         return self.req_and_sign(
-            requests.post, "staking/deposit", {"amount": str(amount)}
+            requests.post, "staking/deposit",
+            {"amount": str(amount)},
+            {"chain": self.chain}
         )
 
     def staking_balance_total(self):
-        return self.balance("staking/total")
+        return self.balance("staking/total", chain=self.chain)
 
     def staking_balance_withdrawable(self):
-        return self.balance("staking/withdrawable")
+        return self.balance("staking/withdrawable", chain=self.chain)
 
     def bounty(self, guid):
         return self(requests.get, "bounties/%s" % guid)
@@ -103,10 +110,10 @@ class PolySwarmAPI(object):
     def bounty_assertions(self, guid):
         return self(requests.get, "bounties/%s/assertions" % guid)
 
-    def vote_bounty(self, guid, verdicts):
+    def vote_bounty(self, guid, votes):
         self.req_and_sign(
             requests.post, "bounties/%s/vote" % guid,
-            {"verdicts": verdicts, "valid_bloom": False},
+            {"votes": votes, "valid_bloom": False},
             params={"chain": self.chain}
         )
 
@@ -116,10 +123,24 @@ class PolySwarmAPI(object):
             params={"chain": self.chain}
         )
 
-    def __call__(self, method, path, args=None, params=None):
-        headers = {
-            "Authorization": "Bearer %s" % self.apikey,
-        }
+    def relay_withdraw(self, amount, chain):
+        r = self.req_and_sign(
+            requests.post, "relay/withdrawal",
+            {"amount": str(amount)},
+            {"chain": chain}
+        )
+        log.debug("relay_withdraw: %r", r)
+
+    def relay_deposit(self, amount, chain):
+        r = self.req_and_sign(
+            requests.post, "relay/deposit",
+            {"amount": str(amount)},
+            {"chain": chain}
+        )
+        log.debug("relay_deposit: %r", r)
+
+    def __call__(self, method, path, body=None, params=None):
+        headers = {"Authorization": "Bearer %s" % self.apikey}
         params = params or {}
         params["account"] = self.account
 
@@ -128,7 +149,7 @@ class PolySwarmAPI(object):
         #if args: log.debug("Payload: %r", args)
 
         resp = method(
-            "https://%s/%s" % (self.host, path), json=args,
+            "https://%s/%s" % (self.host, path), json=body,
             params=params, headers=headers, timeout=120
         )
 
@@ -152,12 +173,14 @@ class PolySwarmAPI(object):
 
         return r.get("result")
 
-    def req_and_sign(self, method, path, args=None, params=None):
+    def req_and_sign(self, method, path, body=None, params=None):
+        chain = self.chain
         with self.base_nonce_lock:
             params = params or {}
-            params["base_nonce"] = self.base_nonce
+            chain = params.get("chain", chain)
+            params["base_nonce"] = self.base_nonce[chain]
 
-            r = self(method, path, args, params)
+            r = self(method, path, body, params)
 
             signed, transactions = [], r.get("transactions", [])
             for transaction in transactions:
@@ -166,11 +189,13 @@ class PolySwarmAPI(object):
                 )
                 signed.append(bytes(s["rawTransaction"]).hex())
 
-            self.base_nonce += len(transactions)
+            self.base_nonce[chain] += len(transactions)
 
         # TODO Error checking - did the transaction succeed?
         r = self(
-            requests.post, "transactions", {"transactions": signed}
+            requests.post, "transactions",
+            {"transactions": signed},
+            {"chain": chain}
         )
         if not r:
             #raise PolySwarmError(500, "Unknown transaction failure")
@@ -198,101 +223,3 @@ class Address(object):
         if isinstance(self.addr, six.integer_types):
             return "0x%040x" % self.addr
         return self.addr
-
-class Assertion(object):
-    def __init__(self, guid=None, author=None, index=None, bid=None,
-                 mask=None, metadata=None, verdicts=None):
-        self.guid = guid
-        self.author = author
-        self.index = index
-        self.bid = bid
-        self.mask = mask
-        self.metadata = metadata
-        self.verdicts = verdicts
-
-    @staticmethod
-    def from_dict(d):
-        return Assertion(
-            guid=d.get("bounty_guid"),
-            author=Address(d["author"]),
-            index=d.get("index"),
-            bid=int(d["bid"]),
-            mask=d["mask"],
-            metadata=d["metadata"],
-            verdicts=d["verdicts"]
-        )
-
-    def __cmp__(self, other):
-        return not (
-            self.guid == other.guid and
-            self.author == other.author and
-            self.index == other.index and
-            self.bid == other.bid and
-            self.mask == other.mask and
-            self.metadata == other.metadata and
-            self.verdicts == other.verdicts
-        )
-
-    def __eq__(self, other):
-        return not self.__cmp__(other)
-
-class Bounty(object):
-    def __init__(self, amount=None, author=None, expiration=None, guid=None,
-                 resolved=None, uri=None, verdicts=None, assertions=None):
-        self.amount = amount
-        self.author = author
-        self.expiration = expiration
-        self.guid = guid
-        self.resolved = resolved
-        self.uri = uri
-        self.verdicts = verdicts
-
-        self.assertions = [] if assertions is None else assertions
-
-    @staticmethod
-    def from_dict(d):
-        return Bounty(
-            amount=int(d["amount"]),
-            author=Address(d["author"]),
-            expiration=int(d["expiration"]),
-            guid=d["guid"],
-            resolved=d.get("resolved"),
-            uri=d["uri"],
-            verdicts=d.get("verdicts"),
-        )
-
-    def __cmp__(self, other):
-        return not (
-            self.amount == other.amount and
-            self.author == other.author and
-            self.expiration == other.expiration and
-            self.guid == other.guid and
-            self.resolved == other.resolved and
-            self.uri == other.uri and
-            self.verdicts == other.verdicts and
-            self.assertions == other.assertions
-        )
-
-    def __eq__(self, other):
-        return not self.__cmp__(other)
-
-class Verdict(object):
-    def __init__(self, guid=None, verdicts=None):
-        self.guid = guid
-        self.verdicts = verdicts
-
-    @staticmethod
-    def from_dict(d):
-        return Verdict(
-            guid=d["bounty_guid"],
-            verdicts=d["verdicts"],
-        )
-
-    def __cmp__(self, other):
-        return not (
-            self.guid == other.guid and
-            self.verdicts == other.verdicts
-        )
-
-    def __eq__(self, other):
-        return not self.__cmp__(other)

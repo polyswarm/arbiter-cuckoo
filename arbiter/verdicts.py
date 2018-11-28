@@ -91,7 +91,7 @@ class VerdictComponent(Component):
         self.url = parent.config.url
 
     @periodic(minutes=2)
-    def expire_verdicts(self):
+    def expire_pending(self):
         """Expire pending verdict tasks."""
         # TODO: preferably replace "arbitrary" timeout window with backend
         # polling

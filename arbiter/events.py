@@ -18,7 +18,10 @@ log = logging.getLogger(__name__)
 class Events(Component):
     def __init__(self, parent):
         self.polyswarm = parent.polyswarm
-        self.uri = "wss://%s/events" % parent.config.polyswarmd
+        self.uri = "wss://%s/events?chain=%s" % (
+            parent.config.polyswarmd,
+            parent.config.chain
+        )
         self.account = parent.polyswarm.account.lower()
 
     def on_message(self, message):
@@ -37,8 +40,9 @@ class Events(Component):
         elif obj["event"] == "assertion":
             dispatch_event("assertion", obj["data"])
 
-        elif obj["event"] == "verdict":
-            dispatch_event("verdict", obj["data"])
+        elif obj["event"] == "vote":
+            # XXX unused
+            dispatch_event("vote", obj["data"])
 
         elif obj["event"] == "connected":
             dispatch_event("connected", obj["data"])
