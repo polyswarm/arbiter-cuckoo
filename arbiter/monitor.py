@@ -3,7 +3,6 @@
 
 import gevent
 import logging
-import requests
 import time
 
 from arbiter.backends import analysis_backends
@@ -52,7 +51,7 @@ class PrometheusMonitor:
         start_response("200 OK", [("Content-Type", "text/plain")])
         r = ""
         for k, v in self.metrics.items():
-            r += "# TYPE gauge\n%s %s\n" % (k, v)
+            r += "%s %s\n" % (k, v)
         return [r.encode("utf8")]
 
 class MonitorComponent(Component):
@@ -132,17 +131,12 @@ class MonitorComponent(Component):
 
         broadcast("backends", backends)
 
-    @periodicx(minutes=5, seconds=7)
-    def update_wallet(self):
-        try:
-            nct = self.polyswarm.balance("nct")
-            eth = self.polyswarm.balance("eth")
-        except requests.exceptions.RequestException as e:
-            log.error("Error fetching wallet: %s", e)
-            return
+    @event("wallet_balance_info")
+    def wallet_balance_info(self, nct, eth):
+        # Home chain values
         wallet = {"addr": self.polyswarm.account,
-                  "nct": nct,
-                  "eth": eth}
+                  "nct": nct[1],
+                  "eth": eth[1]}
         broadcast("wallet", wallet)
 
     @periodicx(seconds=30)

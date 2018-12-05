@@ -124,20 +124,18 @@ class PolySwarmAPI(object):
         )
 
     def relay_withdraw(self, amount, chain):
-        r = self.req_and_sign(
+        return self.req_and_sign(
             requests.post, "relay/withdrawal",
             {"amount": str(amount)},
             {"chain": chain}
         )
-        log.debug("relay_withdraw: %r", r)
 
     def relay_deposit(self, amount, chain):
-        r = self.req_and_sign(
+        return self.req_and_sign(
             requests.post, "relay/deposit",
             {"amount": str(amount)},
             {"chain": chain}
         )
-        log.debug("relay_deposit: %r", r)
 
     def __call__(self, method, path, body=None, params=None):
         headers = {"Authorization": "Bearer %s" % self.apikey}

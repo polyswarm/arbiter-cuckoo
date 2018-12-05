@@ -38,6 +38,9 @@ class DbBounty(Base):
     # A bounty that requires manual intervention
     truth_manual = Column(Boolean, nullable=False, default=False)
 
+    # Delay until block (retry on PolySwarm errors)
+    error_delay_block = Column(Integer, nullable=False, default=0)
+
     # Expiration block for assertions
     expiration_block = Column(Integer, nullable=False)
 

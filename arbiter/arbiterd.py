@@ -87,6 +87,7 @@ class Arbiterd(object):
             i = c(self)
             instances.append(i)
             event_register_instance(i)
+
         tasks = []
         for i in instances:
             log.debug("Run instance %r", i)

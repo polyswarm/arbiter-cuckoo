@@ -112,6 +112,16 @@ def settle(bounty, vote):
     bounty_settle_manual(bounty, votes)
 
 @cli.command()
+@click.pass_context
+def balance(ctx):
+    p = Arbiterd(ctx.meta["config"]).polyswarm
+    p.set_base_nonce()
+    for v in ("nct", "eth"):
+        for c in ("side", "home"):
+            balance = int(p.balance(v, chain=c))
+            print(v, c, balance)
+
+@cli.command()
 def bounties():
     from arbiter.database import DbSession, DbBounty
 

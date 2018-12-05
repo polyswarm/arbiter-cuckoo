@@ -94,9 +94,9 @@ class BountyComponent(Component):
                 and_(DbBounty.voted.is_(False), self.cur_block >= DbBounty.vote_after, DbBounty.truth_value.isnot(None)),
                 # Can reveal (independent from voting)
                 and_(DbBounty.revealed.is_(False), self.cur_block >= DbBounty.reveal_block, DbBounty.assertions.is_(None)),
-                # Can settle (must have voted)
-                and_(DbBounty.voted.is_(True), DbBounty.assertions.isnot(None), DbBounty.settled.is_(False), self.cur_block >= DbBounty.settle_block),
-            ))
+                # Can settle (voting not required; we can't vote anymore anyway)
+                and_(DbBounty.assertions.isnot(None), DbBounty.settled.is_(False), self.cur_block >= DbBounty.settle_block),
+            )).filter(self.cur_block >= DbBounty.error_delay_block)
 
         events = []
         for b in bounties:
@@ -118,9 +118,9 @@ class BountyComponent(Component):
         experts_disagree = False
         num_disagree = 0
         for a in assertions:
-            votes = fix_bitlist(a["votes"], len(value))
+            verdicts = fix_bitlist(a["verdicts"], len(value))
             mask = fix_bitlist(a["mask"], len(value))
-            compare = vote_compare(value, votes, mask)
+            compare = vote_compare(value, verdicts, mask)
             if not compare:
                 continue
             log.warning("%s | Expert %s disagrees! Their vote: %s",
@@ -130,7 +130,7 @@ class BountyComponent(Component):
                 experts_disagree = True
         if len(assertions) >= self.untrusted_experts_required:
             if pct_agree(0.6666, num_disagree, len(assertions)):
-                log.warning("%s | Majority of experts disagrees! (%s/%s)", guid,
+                log.warning("%s | Majority of experts disagree! (%s/%s)", guid,
                             num_disagree, len(assertions))
                 experts_disagree = True
         return experts_disagree
@@ -144,30 +144,28 @@ class BountyComponent(Component):
             return
 
         log.info("%s | %s | Vote on bounty: %s", guid, self.cur_block, vote_show(value))
+        soft_fail = False
         try:
             self.polyswarm.vote_bounty(guid, value)
-            perm_fail = False
         except PolySwarmError as e:
-            log.error("%s | Voting error: %s", guid, e.message or e.reason)
             if e.status >= 500 and self.cur_block < vote_before:
+                log.error("%s | Temporary voting error: %s", guid, e.message or e.reason)
                 # Server booboo, so try again later
-                self.is_voting.discard(guid)
-                return
-            # Abort
-            perm_fail = True
-
-        # TODO: if voting took place >= bounty.vote_before and we didn't manage
-        # to, we've failed!
+                soft_fail = True
+            else:
+                log.error("%s | Permanent voting error: %s", guid, e.message or e.reason)
+                # Side-effect: we won't retry
 
         s = DbSession()
         bounty = s.query(DbBounty).with_for_update().filter_by(guid=guid).one()
         if not bounty.voted:
-            # Fail-safe against double vote bugs
             bounty.voted = True
-            if perm_fail:
-                bounty.status = "aborted"
+            if soft_fail:
                 # TODO: WS event
+                bounty.error_delay_block = self.cur_block + 5
             s.add(bounty)
+        else:
+            log.warning("%s | %s | WARNING: double vote", guid, self.cur_block)
         s.commit()
         s.close()
 
@@ -204,30 +202,31 @@ class BountyComponent(Component):
 
         if experts_disagree and not bounty.settled:
             # Mark as manual so we don't auto-settle
-            log.warning("%s | Set to manual", guid)
-            bounty.truth_manual = True
+            #log.warning("%s | Set to manual", guid)
+            #bounty.truth_manual = True
+            pass
 
-        settle_block = bounty.settle_block
+        #settle_block = bounty.settle_block
         s.add(bounty)
         s.commit()
         s.close()
 
         self.is_revealing.discard(guid)
 
-        if not experts_disagree:
-            # Dispatch bounty_settle so we don't have to wait for another
-            # block update
-            if value is not None and self.cur_block >= settle_block and guid not in self.is_settling:
-                self.is_settling.add(guid)
-                dispatch_event("bounty_settle", guid)
-        else:
-            dispatch_event("bounty_manual", guid)
+        #if not experts_disagree:
+        #    # Dispatch bounty_settle so we don't have to wait for another
+        #    # block update
+        #    if value is not None and self.cur_block >= settle_block and guid not in self.is_settling:
+        #        self.is_settling.add(guid)
+        #        dispatch_event("bounty_settle", guid)
+        #else:
+        #    dispatch_event("bounty_manual", guid)
 
     @event("bounty_settle", serialize=False)
     def bounty_settle(self, guid):
         """Settle bounty for payout"""
 
-        log.info("%s | Settle bounty", guid)
+        log.info("%s | %s | Settle bounty", guid, self.cur_block)
         try:
             self.polyswarm.settle_bounty(guid)
         except PolySwarmNotFound:
@@ -253,7 +252,6 @@ class BountyComponent(Component):
         s.close()
 
         self.is_settling.discard(guid)
-        log.info("%s | Settled!", guid)
         dispatch_event("bounty_settled", guid)
 
     @event("bounty", serialize=32)
@@ -302,8 +300,10 @@ class BountyComponent(Component):
             amount=bounty["amount"],
             num_artifacts=num_artifacts,
 
+            error_delay_block=0,
+
             expiration_block=expiration,
-            vote_after=expiration + self.polyswarm.reveal_window,
+            vote_after=expiration + self.polyswarm.reveal_window + 1,
             vote_before=expiration + self.polyswarm.vote_window,
             reveal_block=expiration + self.polyswarm.vote_window + self.polyswarm.reveal_window,
             settle_block=expiration + self.polyswarm.vote_window + self.polyswarm.reveal_window
@@ -321,7 +321,9 @@ class BountyComponent(Component):
             s.close()
             return
 
-        log.info("New bounty %s with %s artifact(s)", bounty["guid"], len(manifest))
+        log.info(
+            "%s | New bounty | artifacts=%s expiration=%s vote_before=%s settle=%s",
+            bounty["guid"], len(manifest), expiration, b.vote_before, b.settle_block)
 
         # Create jobs for every backend.  If new backends join or backends are
         # removed, tasks are *not* automatically updated.
@@ -365,8 +367,8 @@ class BountyComponent(Component):
         for job in job_ids:
             dispatch_event("verdict_jobs", bounty["guid"], job)
 
-    @event("bounty_artifact_vote")
-    def bounty_artifact_vote(self, bounty_id):
+    @event("bounty_artifact_verdict")
+    def bounty_artifact_verdict(self, bounty_id):
         """Check if bounty can be voted on after artifact update"""
 
         s = DbSession()
@@ -413,12 +415,12 @@ class BountyComponent(Component):
                           artifact.id)
                 record_value = can_vote = False
                 break
-            elif artifact.vote is None:
+            elif artifact.verdict is None:
                 log.debug("%s | Artifact #%s has DONTKNOW vote", bounty.guid,
                           artifact.id)
-                can_vote = False
+                #can_vote = False
                 transition_manual = True
-            elif artifact.vote >= VERDICT_MAYBE:
+            elif artifact.verdict >= VERDICT_MAYBE:
                 votes.append(True) # Malicious
             else:
                 votes.append(False) # Safe
@@ -427,7 +429,7 @@ class BountyComponent(Component):
         ## In case artifact votes came in after settle block
         #if bounty.assertions and not transition_manual:
         #    transition_manual = self._bounty_assertions_disagree(bounty.guid, votes, bounty.assertions)
-        vote_before = bounty.vote_before
+        #vote_before = bounty.vote_before
 
         if transition_manual:
             log.debug("%s | Mark bounty as requiring manual vote", bounty.guid)
@@ -441,9 +443,9 @@ class BountyComponent(Component):
             s.add(bounty)
             s.commit()
         s.close()
-        if can_vote and votes and guid not in self.is_voting:
-            self.is_voting.add(guid)
-            dispatch_event("bounty_vote", guid, votes, vote_before)
+        #if can_vote and votes and guid not in self.is_voting:
+        #    self.is_voting.add(guid)
+        #    dispatch_event("bounty_vote", guid, votes, vote_before)
         if transition_manual:
             dispatch_event("bounty_manual", guid)
 
