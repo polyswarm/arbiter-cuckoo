@@ -22,6 +22,11 @@ from geventwebsocket.handler import WebSocketHandler
 
 from flask import Flask, request, jsonify, Response
 
+try:
+    from polydb import known_malicious
+except ImportError:
+    known_malicious = set()
+
 parser = argparse.ArgumentParser(description="Polymock")
 parser.add_argument("-m", "--mine-speed", type=int, default=15, help="Mine block every X seconds")
 parser.add_argument("-c", "--cuckoo-speed", type=int, default=32, help="Return verdict after X +/- 30 seconds")
@@ -316,13 +321,14 @@ def artifacts_data(ipfs, idx):
 def api_task():
     aid = request.form["custom"]
     backend = request.headers.get("X-Arbiter")
+    hash = hashlib.sha256(request.files["file"].read()).hexdigest()
     xtime = max(1, int(ARGS.cuckoo_speed * 0.2))
     t = random.randrange(max(0, ARGS.cuckoo_speed - xtime),
                          ARGS.cuckoo_speed + xtime)
-    log.info("Received a request to analyze %s (backend: %s | speed: %s)", aid, backend, t)
+    log.info("Received a request to analyze %s (backend: %s | speed: %s | sha256: %s)", aid, backend, t, hash)
     def cuckoo_submit():
         gevent.sleep(t)
-        jobs.put((aid, backend))
+        jobs.put((aid, backend, hash))
     if random.random() < 0.001:
         # Randomly fail
         return jsonify({"error": "Something went wrong"}), 500
@@ -407,10 +413,16 @@ def wait_next_block():
 
 def job_processor():
     while True:
-        url, backend  = jobs.get()
-        log.info("Submit %s for %s", url, backend)
-        #v = random.choice([0, 50, 100] * 3 + [None])
-        v = random.choice([0, 100])
+        url, backend, hash = jobs.get()
+        if known_malicious:
+            if hash in known_malicious:
+                v = 100
+            else:
+                v = 0
+        else:
+            #v = random.choice([0, 50, 100] * 3 + [None])
+            v = random.choice([0, 100])
+        log.info("Submit %s for %s (score = %s)", url, backend, v)
         try:
             token = API_TOKENS.get(backend)
             r = requests.post(
