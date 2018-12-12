@@ -146,7 +146,10 @@ class BountyComponent(Component):
         log.info("%s | %s | Vote on bounty: %s", guid, self.cur_block, vote_show(value))
         soft_fail = False
         try:
-            self.polyswarm.vote_bounty(guid, value)
+            if self.cur_block <= vote_before:
+                self.polyswarm.vote_bounty(guid, value)
+            else:
+                log.error("%s | %s | Permanent voting error: expired!", self.cur_block, guid)
         except PolySwarmError as e:
             if e.status >= 500 and self.cur_block < vote_before:
                 log.error("%s | Temporary voting error: %s", guid, e.message or e.reason)
