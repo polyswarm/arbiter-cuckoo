@@ -40,6 +40,7 @@ class PolySwarmAPI(object):
         self.minimum_stake = minimum_stake
         self.base_nonce = {"side": 0, "home": 0}
         self.base_nonce_lock = Semaphore()
+        self.api_concurrent = Semaphore(8)
 
     def wait_online(self, tries=30):
         for _ in range(tries):
@@ -57,6 +58,18 @@ class PolySwarmAPI(object):
             home = self(requests.get, "nonce", params={"chain": "home"})
             self.base_nonce = {"side": side, "home": home}
             log.info("Base nonce: %s", self.base_nonce)
+
+    def nonce_sync(self):
+        with self.base_nonce_lock:
+            # XXX: this may not work.
+            side = self(requests.get, "nonce", params={"chain": "side"})
+            home = self(requests.get, "nonce", params={"chain": "home"})
+            if side > self.base_nonce["side"]:
+                self.base_nonce["side"] = side
+                log.warning("Side nonce forwarded: %s", side)
+            if home > self.base_nonce["home"]:
+                self.base_nonce["home"] = home
+                log.warning("Home nonce forwarded: %s", side)
 
     def set_params(self):
         params = self(requests.get, "bounties/parameters")
@@ -144,7 +157,7 @@ class PolySwarmAPI(object):
 
         #_params = "&".join("%s=%s" % kv for kv in params.items())
         #log.debug("polyswarm: //%s/%s?%s", self.host, path, _params)
-        #if args: log.debug("Payload: %r", args)
+        #if body: log.debug("Payload: %r", body)
 
         resp = method(
             "https://%s/%s" % (self.host, path), json=body,
@@ -173,31 +186,32 @@ class PolySwarmAPI(object):
 
     def req_and_sign(self, method, path, body=None, params=None):
         chain = self.chain
+        chain = params.get("chain", chain)
+        params = params or {}
         with self.base_nonce_lock:
-            params = params or {}
-            chain = params.get("chain", chain)
             params["base_nonce"] = self.base_nonce[chain]
+            self.base_nonce[chain] += 1  # Bad
 
+        with self.api_concurrent:
             r = self(method, path, body, params)
 
-            signed, transactions = [], r.get("transactions", [])
-            for transaction in transactions:
-                s = web3.eth.account.signTransaction(
-                    transaction, self.account_privkey
-                )
-                signed.append(bytes(s["rawTransaction"]).hex())
+        signed, transactions = [], r.get("transactions", [])
+        if len(transactions) != 1:
+            log.error("Oops, we broke the nonce! %s %s", path, len(transactions))
 
-            self.base_nonce[chain] += len(transactions)
+        for transaction in transactions:
+            s = web3.eth.account.signTransaction(
+                transaction, self.account_privkey
+            )
+            signed.append(bytes(s["rawTransaction"]).hex())
 
-        # TODO Error checking - did the transaction succeed?
         r = self(
             requests.post, "transactions",
             {"transactions": signed},
             {"chain": chain}
         )
         if not r:
-            #raise PolySwarmError(500, "Unknown transaction failure")
-            log.warning("Potential transaction error")
+            log.error("Potential transaction error")
         elif r.get("errors"):
             raise PolySwarmError(500, "\n".join(r["errors"]))
         return r

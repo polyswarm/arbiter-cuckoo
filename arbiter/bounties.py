@@ -69,6 +69,86 @@ class BountyComponent(Component):
 
         self.first = True
 
+    @periodic(minutes=1)
+    def flush_expired_manual(self):
+        block = self.cur_block
+        if block is None:
+            return
+        s = DbSession()
+        bounties = s.query(DbBounty).filter_by(status="active", settled=False, truth_manual=True, voted=False) \
+            .filter(block > DbBounty.vote_before).with_for_update()
+        for b in bounties:
+            log.warning("%s | %s | Expired manual voting (%s)", b.guid, block, b.vote_before)
+            b.voted = True
+            s.add(b)
+        s.commit()
+        s.close()
+
+    @periodic(seconds=5)
+    def advance_vote_bounty(self):
+        block_number = self.cur_block
+        MAX_OUTSTANDING_VOTES = 32
+        pending = len(self.is_voting)
+        if pending >= MAX_OUTSTANDING_VOTES:
+            return
+        events = []
+        s = DbSession()
+        bounties = s.query(DbBounty).filter_by(status="active") \
+            .filter(DbBounty.voted.is_(False)) \
+            .filter(block_number >= DbBounty.vote_after) \
+            .filter(DbBounty.truth_value.isnot(None)) \
+            .filter(block_number >= DbBounty.error_delay_block) \
+            .order_by(DbBounty.id).limit(MAX_OUTSTANDING_VOTES - pending)
+        for b in bounties:
+            _add_event(events, self.is_voting, b.guid, "bounty_vote", b.guid, b.truth_value, b.vote_before)
+        s.commit()
+        s.close()
+        for e, args in events:
+            dispatch_event(e, *args)
+
+    @periodic(seconds=5)
+    def advance_reveal(self):
+        block_number = self.cur_block
+        MAX_OUTSTANDING_REVEALS = 32
+        pending = len(self.is_revealing)
+        if pending >= MAX_OUTSTANDING_REVEALS:
+            return
+        events = []
+        s = DbSession()
+        bounties = s.query(DbBounty).filter_by(status="active") \
+            .filter(DbBounty.revealed.is_(False)) \
+            .filter(block_number >= DbBounty.reveal_block) \
+            .filter(DbBounty.assertions.is_(None)) \
+            .order_by(DbBounty.id).limit(MAX_OUTSTANDING_REVEALS - pending)
+        for b in bounties:
+            _add_event(events, self.is_revealing, b.guid, "bounty_assertions_reveal", b.guid, b.truth_value)
+        s.commit()
+        s.close()
+        for e, args in events:
+            dispatch_event(e, *args)
+
+    @periodic(seconds=5)
+    def advance_settle(self):
+        block_number = self.cur_block
+        MAX_OUTSTANDING_SETTLES = 32
+        pending = len(self.is_settling)
+        if pending >= MAX_OUTSTANDING_SETTLES:
+            return
+        events = []
+        s = DbSession()
+        bounties = s.query(DbBounty).filter_by(status="active") \
+            .filter(DbBounty.assertions.isnot(None)) \
+            .filter(DbBounty.settled.is_(False)) \
+            .filter(block_number >= DbBounty.settle_block) \
+            .filter(block_number >= DbBounty.error_delay_block) \
+            .order_by(DbBounty.id).limit(MAX_OUTSTANDING_SETTLES - pending)
+        for b in bounties:
+            _add_event(events, self.is_settling, b.guid, "bounty_settle", b.guid)
+        s.commit()
+        s.close()
+        for e, args in events:
+            dispatch_event(e, *args)
+
     @event("block")
     def block_updated(self, block_number):
         """Advance to the next block.
@@ -83,36 +163,6 @@ class BountyComponent(Component):
         if self.cur_block is not None and block_number <= self.cur_block:
             return
         self.cur_block = block_number
-
-        # TODO: maybe conflict with tasks spawned elsewhere
-
-        s = DbSession()
-
-        bounties = s.query(DbBounty).filter_by(status="active") \
-            .filter(or_(
-                # Can vote
-                and_(DbBounty.voted.is_(False), self.cur_block >= DbBounty.vote_after, DbBounty.truth_value.isnot(None)),
-                # Can reveal (independent from voting)
-                and_(DbBounty.revealed.is_(False), self.cur_block >= DbBounty.reveal_block, DbBounty.assertions.is_(None)),
-                # Can settle (voting not required; we can't vote anymore anyway)
-                and_(DbBounty.assertions.isnot(None), DbBounty.settled.is_(False), self.cur_block >= DbBounty.settle_block),
-            )).filter(self.cur_block >= DbBounty.error_delay_block)
-
-        events = []
-        for b in bounties:
-            if not b.voted and b.truth_value is not None:
-                _add_event(events, self.is_voting, b.guid,
-                           "bounty_vote", b.guid, b.truth_value, b.vote_before)
-            if not b.revealed and self.cur_block >= b.reveal_block:
-                _add_event(events, self.is_revealing, b.guid,
-                           "bounty_assertions_reveal", b.guid, b.truth_value)
-            if b.voted and b.revealed and not b.settled and self.cur_block >= b.settle_block:
-                _add_event(events, self.is_settling, b.guid,
-                           "bounty_settle", b.guid)
-        s.close()
-
-        for e, args in events:
-            dispatch_event(e, *args)
 
     def _bounty_assertions_disagree(self, guid, value, assertions):
         experts_disagree = False

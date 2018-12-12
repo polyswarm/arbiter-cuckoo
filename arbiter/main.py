@@ -119,7 +119,7 @@ def balance(ctx):
     for v in ("nct", "eth"):
         for c in ("side", "home"):
             balance = int(p.balance(v, chain=c))
-            print(v, c, balance)
+             logging.info("%s %s %s", v, c, balance)
 
 @cli.command()
 def bounties():

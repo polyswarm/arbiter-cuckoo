@@ -9,7 +9,7 @@ from arbiter.backends import analysis_backends
 from arbiter.component import Component
 from arbiter.dashboard import ui_broadcast_ws, ui_data_list, send
 from arbiter.database import DbSession, DbBounty, DbArtifact
-from arbiter.events import event, periodicx
+from arbiter.events import event, periodic, periodicx
 
 log = logging.getLogger(__name__)
 
@@ -112,6 +112,10 @@ class MonitorComponent(Component):
     @event("polyswarm_bounty_settled")
     def polyswarm_bounty_settled(self, guid):
         self.metrics.count("polyswarm_settled")
+
+    @periodic(minutes=1)
+    def nonce_check(self):
+        self.polyswarm.nonce_sync()
 
     @periodicx(minutes=5)
     def health_check(self):

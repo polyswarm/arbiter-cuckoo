@@ -19,9 +19,9 @@ class BalanceComponent(Component):
         self.min_block_wait = 600
         self.cur_block = None
         self.last_acted_block = None
-        self.last_acted_block = None
         self.eth_balance = (None, None)
         self.nct_balance = (None, None)
+        self.changed = True
         log.info(
             "Minimum balance: %s /  Maximum balance: %s",
             self.min_side, self.max_side)
@@ -34,10 +34,6 @@ class BalanceComponent(Component):
     def balance_manager(self):
         if not self.cur_block:
             return
-        if self.last_acted_block:
-            blocks_passed = self.cur_block - self.last_acted_block
-            if blocks_passed < self.min_block_wait:
-                return
 
         eth_side = 0 #int(self.polyswarm.balance("eth", chain="side"))
         eth_home = int(self.polyswarm.balance("eth", chain="home"))
@@ -45,6 +41,7 @@ class BalanceComponent(Component):
         if eth != self.eth_balance:
             log.debug("[ETH] Balance: %r / %r", eth_side, eth_home)
             self.eth_balance = eth
+            self.changed = True
 
         nct_side = int(self.polyswarm.balance("nct", chain="side"))
         nct_home = int(self.polyswarm.balance("nct", chain="home"))
@@ -52,12 +49,23 @@ class BalanceComponent(Component):
         if nct != self.nct_balance:
             log.debug("[NCT] Balance: %r / %r", nct_side, nct_home)
             self.nct_balance = nct
+            self.changed = True
 
         dispatch_event("wallet_balance_info", nct, eth)
+
+        if self.last_acted_block:
+            blocks_passed = self.cur_block - self.last_acted_block
+            if blocks_passed < self.min_block_wait:
+                return
+            # Always wait until something changed
+            if not self.changed:
+                return
 
         if eth_home < 1000000000:
             log.error("Insufficient funds to relay transfer")
             return
+
+        self.changed = False
 
         if nct_side < self.min_side:
             if self.refill_amount > nct_home:
