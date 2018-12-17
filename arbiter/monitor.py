@@ -24,6 +24,12 @@ class PrometheusMonitor:
         self.level = logging.ERROR  # Terrible hack
         self.metrics = {"arbiter_errors": 0,
                         "arbiter_jobs_submitted": 0,
+                        "arbiter_artifact_malicious": 0,
+                        "arbiter_artifact_safe": 0,
+                        "arbiter_artifact_dontknow": 0,
+                        "arbiter_bad_verdict": 0,
+                        "arbiter_good_verdict": 0,
+                        "arbiter_no_verdict": 0,
                         "polyswarm_settled": 0,
                         "arbiter_artifacts_completed": 0}
         self.errors = 0
@@ -86,13 +92,26 @@ class MonitorComponent(Component):
             )
             exit(0)
 
+    @event("metrics_simple")
+    def metrics_simple(self, key):
+        self.metrics.count(key, 1)
+
     @event("metrics_jobs_submitted")
     def metrics_jobs_submitted(self, num_jobs):
         self.metrics.count("arbiter_jobs_submitted", num_jobs)
 
     @event("metrics_artifact_complete")
     def metrics_artifact_complete(self, num_artifacts):
-        self.metrics.count("arbiter_artifacts_completed", )
+        self.metrics.count("arbiter_artifacts_completed", num_artifacts)
+
+    @event("metrics_artifact_verdict")
+    def metrics_artifact_complete(self, verdict):
+        if verdict is None:
+            self.metrics.count("arbiter_artifact_dontknow", 1)
+        elif verdict == 100:
+            self.metrics.count("arbiter_artifact_malicious", 1)
+        elif verdict == 0:
+            self.metrics.count("arbiter_artifact_safe", 1)
 
     @event("bounty_manual")
     def bounty_manual(self, guid):

@@ -45,12 +45,15 @@ class PolySwarmAPI(object):
     def wait_online(self, tries=30):
         for _ in range(tries):
             try:
-                requests.get("https://%s/" % self.host, timeout=10)
-                return
+                s = self.status()
+                return s.get("side", {}).get("block")
             except IOError:
-                pass
+                s = None
             time.sleep(1)
         raise IOError("Polyswarm host at %s not online" % self.host)
+
+    def status(self):
+        return self(requests.get, "status")
 
     def set_base_nonce(self):
         with self.base_nonce_lock:
@@ -198,6 +201,11 @@ class PolySwarmAPI(object):
         signed, transactions = [], r.get("transactions", [])
         if len(transactions) != 1:
             log.error("Oops, we broke the nonce! %s %s", path, len(transactions))
+            diff = len(transactions) - 1
+            if diff > 0:
+                # At least try to unbreak
+                with self.base_nonce_lock:
+                    self.base_nonce[chain] += diff
 
         for transaction in transactions:
             s = web3.eth.account.signTransaction(

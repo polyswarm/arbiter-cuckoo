@@ -12,7 +12,10 @@ import os.path
 import sys
 import yaml
 
+from web3.auto import w3 as web3
+
 from arbiter.arbiterd import Arbiterd
+from arbiter.balance import val_readable
 from arbiter.config import ConfigFile
 from arbiter.const import JOB_STATUS_NAMES, MINIMUM_STAKE_DEFAULT
 from arbiter.database import init_database
@@ -113,13 +116,40 @@ def settle(bounty, vote):
 
 @cli.command()
 @click.pass_context
+@click.argument("chain")
+@click.argument("amount")
+def relay(ctx, chain, amount):
+    """Relay *to* chain"""
+    from decimal import Decimal
+    if chain not in ("side", "home"):
+        raise ValueError(chain)
+
+    amount = web3.toWei(Decimal(amount), "ether")
+    if amount <= 0:
+        raise ValueError(amount)
+
+    p = Arbiterd(ctx.meta["config"]).polyswarm
+    p.set_base_nonce()
+    if chain == "side":
+        logging.info("Transferring %s from home to side", amount)
+        p.relay_deposit(amount, "home")
+    else:
+        logging.info("Transferring %s from side to home", amount)
+        p.relay_withdraw(amount, "side")
+
+@cli.command()
+@click.pass_context
 def balance(ctx):
     p = Arbiterd(ctx.meta["config"]).polyswarm
     p.set_base_nonce()
     for v in ("nct", "eth"):
         for c in ("side", "home"):
             balance = int(p.balance(v, chain=c))
-             logging.info("%s %s %s", v, c, balance)
+            logging.info("%s %s %s", v, c, val_readable(balance, v))
+    balance = int(p.staking_balance_withdrawable())
+    logging.info("staking withdrawable %s", val_readable(balance, "nct"))
+    balance = int(p.staking_balance_total())
+    logging.info("staking total %s", val_readable(balance, "nct"))
 
 @cli.command()
 def bounties():

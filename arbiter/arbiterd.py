@@ -63,7 +63,7 @@ class Arbiterd(object):
         ipfs.ipfs_apikey = self.config.apikey
         ipfs.cache_path = self.config.artifacts
 
-        self.polyswarm.wait_online()
+        self.initial_block = self.polyswarm.wait_online()
         self.polyswarm.set_base_nonce()
         self.polyswarm.set_params()
         if '.stage.' not in self.config.polyswarmd:

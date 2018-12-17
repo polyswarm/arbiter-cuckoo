@@ -57,7 +57,7 @@ class BountyComponent(Component):
         self.manual_mode = parent.manual_mode
         self.polyswarm = parent.polyswarm
         self.expires = parent.config.expires
-        self.cur_block = None
+        self.cur_block = parent.initial_block
 
         self.trusted_experts = parent.config.trusted_experts
         self.untrusted_experts_required = 3
@@ -72,8 +72,6 @@ class BountyComponent(Component):
     @periodic(minutes=1)
     def flush_expired_manual(self):
         block = self.cur_block
-        if block is None:
-            return
         s = DbSession()
         bounties = s.query(DbBounty).filter_by(status="active", settled=False, truth_manual=True, voted=False) \
             .filter(block > DbBounty.vote_before).with_for_update()

@@ -6,9 +6,16 @@ import logging
 from web3.auto import w3 as web3
 
 from arbiter.component import Component
-from arbiter.events import event, periodic, dispatch_event
+from arbiter.events import event, periodic, periodicx, dispatch_event
 
 log = logging.getLogger(__name__)
+
+def val_readable(wei, unit=None):
+    if unit == "nct":
+        # decimals = 18, so this works out
+        pass
+    v = web3.fromWei(wei, "ether")
+    return str(v) + ((" " + unit) if unit else "")
 
 class BalanceComponent(Component):
     def __init__(self, parent):
@@ -16,12 +23,14 @@ class BalanceComponent(Component):
         self.min_side = web3.toWei(100000000, "ether")
         self.refill_amount = self.min_side
         self.max_side = web3.toWei(250000000, "ether")
-        self.min_block_wait = 600
-        self.cur_block = None
-        self.last_acted_block = None
+        # At least 5 minutes
+        self.min_block_wait = 330
+        self.cur_block = parent.initial_block
+        self.wait_until_block = None
+        # (side, home)
         self.eth_balance = (None, None)
         self.nct_balance = (None, None)
-        self.changed = True
+        self.changed = False
         log.info(
             "Minimum balance: %s /  Maximum balance: %s",
             self.min_side, self.max_side)
@@ -30,16 +39,13 @@ class BalanceComponent(Component):
     def block_updated(self, block_number):
         self.cur_block = block_number
 
-    @periodic(seconds=60)
-    def balance_manager(self):
-        if not self.cur_block:
-            return
-
+    @periodicx(seconds=60)
+    def check_balance(self):
         eth_side = 0 #int(self.polyswarm.balance("eth", chain="side"))
         eth_home = int(self.polyswarm.balance("eth", chain="home"))
         eth = (eth_side, eth_home)
         if eth != self.eth_balance:
-            log.debug("[ETH] Balance: %r / %r", eth_side, eth_home)
+            log.debug("[ETH] Balance: %s", val_readable(eth_home, "eth"))
             self.eth_balance = eth
             self.changed = True
 
@@ -47,42 +53,46 @@ class BalanceComponent(Component):
         nct_home = int(self.polyswarm.balance("nct", chain="home"))
         nct = (nct_side, nct_home)
         if nct != self.nct_balance:
-            log.debug("[NCT] Balance: %r / %r", nct_side, nct_home)
+            log.debug("[NCT] Balance: %s / %s", val_readable(nct_side, "nct"),
+                val_readable(nct_home, "nct"))
             self.nct_balance = nct
             self.changed = True
 
         dispatch_event("wallet_balance_info", nct, eth)
 
-        if self.last_acted_block:
-            blocks_passed = self.cur_block - self.last_acted_block
-            if blocks_passed < self.min_block_wait:
-                return
+    @periodic(seconds=121)
+    def balance_manager(self):
+        if self.wait_until_block is not None:
             # Always wait until something changed
             if not self.changed:
                 return
+            if self.cur_block < self.wait_until_block:
+                return
+            self.wait_until_block = None
 
-        if eth_home < 1000000000:
+        eth = self.eth_balance
+        if eth[1] < 1000000000:
             log.error("Insufficient funds to relay transfer")
             return
 
         self.changed = False
-
-        if nct_side < self.min_side:
-            if self.refill_amount > nct_home:
+        nct = self.nct_balance
+        if nct[0] < self.min_side:
+            if self.refill_amount > nct[1]:
                 log.error(
                     "Insufficient funds on home chain to withdraw %s",
                     self.refill_amount)
             else:
                 log.info(
                     "%s | Transferring %s from home to side",
-                    self.cur_block, self.refill_amount)
-                self.last_acted_block = self.cur_block
+                    self.cur_block, val_readable(self.refill_amount, "nct"))
+                self.wait_until_block = self.cur_block + self.min_block_wait
                 self.polyswarm.relay_deposit(self.refill_amount, "home")
 
-        elif nct_side > self.max_side:
-            difference = nct_side - self.max_side
+        elif nct[0] > self.max_side:
+            difference = nct[0] - self.max_side
             log.info(
                 "%s | Transferring %s from side to home",
-                self.cur_block, difference)
-            self.last_acted_block = self.cur_block
+                self.cur_block, val_readable(difference, "nct"))
+            self.wait_until_block = self.cur_block + self.min_block_wait
             self.polyswarm.relay_withdraw(difference, "side")

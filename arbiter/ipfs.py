@@ -1,6 +1,7 @@
 # Copyright (C) 2018 Hatching B.V.
 # This file is licensed under the MIT License, see also LICENSE.
 
+import hashlib
 import json
 import logging
 import os.path
@@ -52,6 +53,20 @@ def ipfs_download(hash, uri=None):
 
 def ipfs_open(hash, uri=None):
     return open(ipfs_download(hash, uri), "rb")
+
+def ipfs_cached(hash):
+    if not r_valid_hash.match(hash):
+        raise ValueError("Invalid IPFS hash %r" % hash)
+    path = os.path.join(cache_path, hash)
+    if os.path.exists(path):
+        return open(path, "rb")
+
+def ipfs_cached_sha256(hash):
+    fp = ipfs_cached(hash)
+    if fp:
+        r = hashlib.sha256(fp.read()).hexdigest()
+        fp.close()
+        return r
 
 def ipfs_json(hash, uri=None, cache=True):
     if not cache:

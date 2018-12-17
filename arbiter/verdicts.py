@@ -191,6 +191,7 @@ class VerdictComponent(Component):
             artifact.verdict = verdict
             s.add(artifact)
             s.commit()
+            dispatch_event("metrics_artifact_verdict", verdict)
         else:
             log.debug("Verdict for artifact #%s incomplete", artifact_id)
             bounty_id = None
@@ -231,7 +232,6 @@ class VerdictComponent(Component):
         failed = {DbArtifactVerdict.status: JOB_STATUS_FAILED,
                   DbArtifactVerdict.meta: None,
                   DbArtifactVerdict.expires: None}
-
 
         try:
             for av_id, backend, artifact, previous_task in jobs:

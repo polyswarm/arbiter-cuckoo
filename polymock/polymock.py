@@ -339,6 +339,15 @@ def api_task():
                     "task_id": task_id,
                     "task_ids": [task_id]})
 
+@app.route("/machines/list")
+def cuckoo_machines_list():
+    return jsonify({
+        "machines": [
+            {"name": "cuckoo1", "platform": "windows", "tags": ["polyswarm", "adobe9"]},
+            {"name": "cuckoo2", "platform": "windows", "tags": ["polyswarm", "adobe9"]},
+        ]
+    })
+
 @app.route("/cuckoo/status")
 @app.route("/v1/cuckoo/status")
 def cuckoo_status():
