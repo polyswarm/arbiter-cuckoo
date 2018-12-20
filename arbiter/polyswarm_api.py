@@ -12,13 +12,13 @@ from web3.auto import w3 as web3
 log = logging.getLogger(__name__)
 
 class PolySwarmError(Exception):
-    def __init__(self, status, message, reason=''):
+    def __init__(self, status, message, reason=""):
         self.status = status
         self.message = message
         self.reason = reason
 
     def __str__(self):
-        return '%s %s %s' % (self.status, self.message, self.reason)
+        return "%s %s %s" % (self.status, self.message, self.reason)
 
 class PolySwarmNotFound(PolySwarmError):
     pass
@@ -41,6 +41,7 @@ class PolySwarmAPI(object):
         self.base_nonce = {"side": 0, "home": 0}
         self.base_nonce_lock = Semaphore()
         self.api_concurrent = Semaphore(8)
+        #self.session = requests.Session()
 
     def wait_online(self, tries=30):
         for _ in range(tries):
@@ -53,29 +54,29 @@ class PolySwarmAPI(object):
         raise IOError("Polyswarm host at %s not online" % self.host)
 
     def status(self):
-        return self(requests.get, "status")
+        return self("get", "status")
 
     def set_base_nonce(self):
         with self.base_nonce_lock:
-            side = self(requests.get, "nonce", params={"chain": "side"})
-            home = self(requests.get, "nonce", params={"chain": "home"})
+            side = self("get", "nonce", params={"chain": "side"})
+            home = self("get", "nonce", params={"chain": "home"})
             self.base_nonce = {"side": side, "home": home}
             log.info("Base nonce: %s", self.base_nonce)
 
     def nonce_sync(self):
         with self.base_nonce_lock:
             # XXX: this may not work.
-            side = self(requests.get, "nonce", params={"chain": "side"})
-            home = self(requests.get, "nonce", params={"chain": "home"})
+            side = self("get", "nonce", params={"chain": "side"})
+            home = self("get", "nonce", params={"chain": "home"})
             if side > self.base_nonce["side"]:
                 self.base_nonce["side"] = side
-                log.warning("Side nonce forwarded: %s", side)
+                log.error("Side nonce forwarded: %s", side)
             if home > self.base_nonce["home"]:
                 self.base_nonce["home"] = home
-                log.warning("Home nonce forwarded: %s", side)
+                log.error("Home nonce forwarded: %s", side)
 
     def set_params(self):
-        params = self(requests.get, "bounties/parameters")
+        params = self("get", "bounties/parameters")
         self.reveal_window = params["assertion_reveal_window"]
         log.info("Assertion reveal window: %s", self.reveal_window)
         self.vote_window = params["arbiter_vote_window"]
@@ -100,11 +101,11 @@ class PolySwarmAPI(object):
         p = None
         if chain:
             p = {"chain": chain}
-        return self(requests.get, "balances/%s/%s" % (account, kind), params=p)
+        return self("get", "balances/%s/%s" % (account, kind), params=p)
 
     def staking_deposit(self, amount):
         return self.req_and_sign(
-            requests.post, "staking/deposit",
+            "post", "staking/deposit",
             {"amount": str(amount)},
             {"chain": self.chain}
         )
@@ -116,44 +117,48 @@ class PolySwarmAPI(object):
         return self.balance("staking/withdrawable", chain=self.chain)
 
     def bounty(self, guid):
-        return self(requests.get, "bounties/%s" % guid)
+        return self("get", "bounties/%s" % guid)
 
     def pending_bounties(self):
-        b = self(requests.get, "bounties/pending")
-        b.extend(self(requests.get, "bounties/active"))
+        b = self("get", "bounties/pending")
+        b.extend(self("get", "bounties/active"))
         return b
 
     def bounty_assertions(self, guid):
-        return self(requests.get, "bounties/%s/assertions" % guid)
+        return self("get", "bounties/%s/assertions" % guid)
 
     def vote_bounty(self, guid, votes):
         self.req_and_sign(
-            requests.post, "bounties/%s/vote" % guid,
+            "post", "bounties/%s/vote" % guid,
             {"votes": votes, "valid_bloom": False},
             params={"chain": self.chain}
         )
 
     def settle_bounty(self, guid):
         self.req_and_sign(
-            requests.post, "bounties/%s/settle" % guid,
+            "post", "bounties/%s/settle" % guid,
             params={"chain": self.chain}
         )
 
     def relay_withdraw(self, amount, chain):
         return self.req_and_sign(
-            requests.post, "relay/withdrawal",
+            "post", "relay/withdrawal",
             {"amount": str(amount)},
             {"chain": chain}
         )
 
     def relay_deposit(self, amount, chain):
         return self.req_and_sign(
-            requests.post, "relay/deposit",
+            "post", "relay/deposit",
             {"amount": str(amount)},
             {"chain": chain}
         )
 
-    def __call__(self, method, path, body=None, params=None):
+    def __call__(self, method, path, body=None, params=None, session=None):
+        if not session:
+            session = requests.Session()
+        func = getattr(session, method)
+        #func = getattr(self.session, method)
         headers = {"Authorization": "Bearer %s" % self.apikey}
         params = params or {}
         params["account"] = self.account
@@ -162,9 +167,9 @@ class PolySwarmAPI(object):
         #log.debug("polyswarm: //%s/%s?%s", self.host, path, _params)
         #if body: log.debug("Payload: %r", body)
 
-        resp = method(
+        resp = func(
             "https://%s/%s" % (self.host, path), json=body,
-            params=params, headers=headers, timeout=120
+            params=params, headers=headers, timeout=(10, 30)
         )
 
         if resp.status_code == 404:
@@ -195,8 +200,9 @@ class PolySwarmAPI(object):
             params["base_nonce"] = self.base_nonce[chain]
             self.base_nonce[chain] += 1  # Bad
 
+        reqses = requests.Session()
         with self.api_concurrent:
-            r = self(method, path, body, params)
+            r = self(method, path, body, params, session=reqses)
 
         signed, transactions = [], r.get("transactions", [])
         if len(transactions) != 1:
@@ -214,9 +220,10 @@ class PolySwarmAPI(object):
             signed.append(bytes(s["rawTransaction"]).hex())
 
         r = self(
-            requests.post, "transactions",
+            "post", "transactions",
             {"transactions": signed},
-            {"chain": chain}
+            {"chain": chain},
+            session=reqses
         )
         if not r:
             log.error("Potential transaction error")
