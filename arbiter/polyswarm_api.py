@@ -107,14 +107,14 @@ class PolySwarmAPI(object):
         return self.req_and_sign(
             "post", "staking/deposit",
             {"amount": str(amount)},
-            {"chain": self.chain}
+            {"chain": "home"}
         )
 
     def staking_balance_total(self):
-        return self.balance("staking/total", chain=self.chain)
+        return self.balance("staking/total", chain="home")
 
     def staking_balance_withdrawable(self):
-        return self.balance("staking/withdrawable", chain=self.chain)
+        return self.balance("staking/withdrawable", chain="home")
 
     def bounty(self, guid):
         return self("get", "bounties/%s" % guid)
@@ -169,7 +169,7 @@ class PolySwarmAPI(object):
 
         resp = func(
             "https://%s/%s" % (self.host, path), json=body,
-            params=params, headers=headers, timeout=(10, 30)
+            params=params, headers=headers, timeout=(10, 300)
         )
 
         if resp.status_code == 404:
