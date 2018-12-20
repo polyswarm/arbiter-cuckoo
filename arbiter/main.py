@@ -28,21 +28,23 @@ def initialize(path, clean=False):
     init_database(config.dburi, clean)
     return config
 
+
 @click.group()
 @click.option("--debug", "-d", is_flag=True)
-@click.option("--clean", is_flag=True) # TODO: remove
+@click.option("--silent", is_flag=True)
 @click.option("--config", "-c",
               required=False, default=default_conf_path,
               type=click.Path(exists=False))
 @click.pass_context
-def cli(ctx, debug, clean, config):
+def cli(ctx, debug, silent, config):
     level = logging.DEBUG if debug else logging.INFO
     fmt = "%(asctime)s %(name)s %(levelname)s: %(message)s"
     root = logging.getLogger()
-    stream = logging.StreamHandler()
-    stream.setFormatter(ColorFormatter(fmt))
     root.setLevel(level)
-    root.addHandler(stream)
+    if not silent:
+        stream = logging.StreamHandler()
+        stream.setFormatter(ColorFormatter(fmt))
+        root.addHandler(stream)
 
     logging.getLogger("urllib3").setLevel(logging.WARNING)
 
@@ -53,11 +55,19 @@ def cli(ctx, debug, clean, config):
     if ctx.invoked_subcommand != "conf":
         if not os.path.exists(config):
             sys.exit("Configuration file %s not found" % config)
-        ctx.meta["config"] = initialize(config, clean)
-        host = ctx.meta["config"].polyswarmd
-        logfile = logging.FileHandler("arbiter.%s.log" % host)
-        logfile.setFormatter(logging.Formatter(fmt))
-        root.addHandler(logfile)
+        if ctx.invoked_subcommand != "clean":
+            ctx.meta["config"] = initialize(config)
+            host = ctx.meta["config"].polyswarmd
+            logfile = logging.FileHandler("arbiter.%s.log" % host)
+            logfile.setFormatter(logging.Formatter(fmt))
+            root.addHandler(logfile)
+
+@cli.command()
+@click.pass_context
+def clean(ctx):
+    """Reset database"""
+    ctx.meta["config"] = initialize(ctx.meta["config_path"], True)
+    print("Database reset")
 
 @cli.command()
 @click.pass_context
