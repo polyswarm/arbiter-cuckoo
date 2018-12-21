@@ -103,3 +103,6 @@ class ColorFormatter(logging.Formatter):
         if record.levelno == logging.DEBUG:
             formatted = GRAYOUT + formatted + RESET
         return formatted
+
+class SimpleFormatter(logging.Formatter):
+    pass

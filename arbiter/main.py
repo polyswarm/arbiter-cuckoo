@@ -19,7 +19,7 @@ from arbiter.balance import val_readable
 from arbiter.config import ConfigFile
 from arbiter.const import JOB_STATUS_NAMES, MINIMUM_STAKE_DEFAULT
 from arbiter.database import init_database
-from arbiter.utils import ColorFormatter
+from arbiter.utils import SimpleFormatter
 
 default_conf_path = os.path.expanduser("~/.arbiter.yaml")
 
@@ -43,7 +43,7 @@ def cli(ctx, debug, silent, config):
     root.setLevel(level)
     if not silent:
         stream = logging.StreamHandler()
-        stream.setFormatter(ColorFormatter(fmt))
+        stream.setFormatter(SimpleFormatter(fmt))
         root.addHandler(stream)
 
     logging.getLogger("urllib3").setLevel(logging.WARNING)
