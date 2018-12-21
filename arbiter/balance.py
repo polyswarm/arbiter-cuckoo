@@ -21,7 +21,7 @@ class BalanceComponent(Component):
     def __init__(self, parent):
         self.polyswarm = parent.polyswarm
         self.min_side = web3.toWei(100000000, "ether")
-        self.refill_amount = self.min_side
+        self.refill_amount = web3.toWei(100000000, "ether")
         self.max_side = web3.toWei(250000000, "ether")
         # At least 5 minutes
         self.min_block_wait = 330
@@ -75,7 +75,6 @@ class BalanceComponent(Component):
             log.error("Insufficient funds to relay transfer")
             return
 
-        self.changed = False
         nct = self.nct_balance
         if nct[0] < self.min_side:
             if self.refill_amount > nct[1]:
@@ -86,13 +85,18 @@ class BalanceComponent(Component):
                 log.info(
                     "%s | Transferring %s from home to side",
                     self.cur_block, val_readable(self.refill_amount, "nct"))
+                self.changed = False
                 self.wait_until_block = self.cur_block + self.min_block_wait
                 self.polyswarm.relay_deposit(self.refill_amount, "home")
 
         elif nct[0] > self.max_side:
             difference = nct[0] - self.max_side
+            if difference < self.refill_amount:
+                # Don't do small transactions
+                return
             log.info(
                 "%s | Transferring %s from side to home",
                 self.cur_block, val_readable(difference, "nct"))
+            self.changed = False
             self.wait_until_block = self.cur_block + self.min_block_wait
             self.polyswarm.relay_withdraw(difference, "side")
