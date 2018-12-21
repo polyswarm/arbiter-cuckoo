@@ -215,6 +215,9 @@ class BountyComponent(Component):
             else:
                 log.error("%s | Permanent voting error: %s", guid, e.message or e.reason)
                 # Side-effect: we won't retry
+        except IOError as e:
+            log.error("%s | Temporary voting error: %s", guid, e)
+            soft_fail = True
 
         s = DbSession()
         bounty = s.query(DbBounty).with_for_update().filter_by(guid=guid).one()
@@ -287,32 +290,42 @@ class BountyComponent(Component):
         """Settle bounty for payout"""
 
         log.info("%s | %s | Settle bounty", guid, self.cur_block)
+        failed = False
+        soft_fail = False
         try:
             self.polyswarm.settle_bounty(guid)
         except PolySwarmNotFound:
             # Record permanent failure
             log.error("%s | Bounty no longer exists (double submit?)", guid)
+            failed = True
         except PolySwarmError as e:
-            log.error("%s | API error: %s", guid, e)
-            self.is_settling.discard(guid)
-            return
-        except:
-            log.exception("Failed to settle bounty")
-            self.is_settling.discard(guid)
-            return
+            log.error("%s | Settle error: %s", guid, e)
+            failed = True
+            if "already been settled" not in str(e):
+                soft_fail = True
+        except IOError as e:
+            log.error("%s | Temporary settle error: %s", guid, e)
+            failed = True
+            soft_fail = True
 
         s = DbSession()
-        bounty = s.query(DbBounty).with_for_update() \
-            .filter_by(guid=guid).one()
-        if not bounty.settled:
-            bounty.status = "finished"
-            bounty.settled = True
+        bounty = s.query(DbBounty).with_for_update().filter_by(guid=guid).first()
+        if bounty and not bounty.settled:
+            if failed and soft_fail:
+                bounty.error_delay_block = self.cur_block + 5
+            else:
+                if failed:
+                    bounty.status = "aborted"
+                else:
+                    bounty.status = "finished"
+                bounty.settled = True
             s.add(bounty)
         s.commit()
         s.close()
 
         self.is_settling.discard(guid)
-        dispatch_event("bounty_settled", guid)
+        if not soft_fail:
+            dispatch_event("bounty_settled", guid)
 
     @event("bounty", serialize=32)
     def bounty_with_manifest(self, bounty):
