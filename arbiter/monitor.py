@@ -37,7 +37,8 @@ class PrometheusMonitor:
     def server(self, bind):
         self.track("arbiter_started", int(time.time()))
         host, port = bind.split(":")
-        gevent.pywsgi.WSGIServer((host, int(port)), self).serve_forever()
+        s = gevent.pywsgi.WSGIServer((host, int(port)), self, log=None)
+        s.serve_forever()
 
     def handle(self, record):
         if record.levelno >= logging.ERROR:

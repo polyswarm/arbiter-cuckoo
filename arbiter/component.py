@@ -25,7 +25,7 @@ class WSGIComponent(Component):
         host, port = self.bind.split(":")
         log.info("Starting server for %r on %r", self.app, self.bind)
         self.app.component = self
-        kwargs = {}
+        kwargs = {"log": None}
         if self.ws:
             def app(environ, start_response):
                 path = environ["PATH_INFO"]
@@ -33,7 +33,7 @@ class WSGIComponent(Component):
                 if handler and "wsgi.websocket" in environ:
                     return handler(self, environ["wsgi.websocket"])
                 return self.app(environ, start_response)
-            kwargs = {"handler_class": WebSocketHandler}
+            kwargs["handler_class"] = WebSocketHandler
             logging.getLogger("geventwebsocket.handler").setLevel(logging.INFO)
         else:
             app = self.app

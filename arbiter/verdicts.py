@@ -59,29 +59,29 @@ def vote_on_artifact(voters):
     if high_confidence_malicious:
         # We assume the backends are conservative, so if we trust this backend
         # has found sufficient evidence of malicious behavior, use this verdict
-        log.info("Voted MALICIOUS because of positive high-confidence voter")
+        log.debug("Voted MALICIOUS because of positive high-confidence voter")
         return VERDICT_MALICIOUS
 
     if not pct_agree(0.5, total_votes, total_voters):
         # If too many voters abstain, we can't reach a verdict.
-        log.info("Voted DONTKNOW because there are missing voters (%s/%s)",
-                 total_votes, total_voters)
+        log.debug("Voted DONTKNOW because there are missing voters (%s/%s)",
+                  total_votes, total_voters)
         return VERDICT_DONTKNOW
 
     if pct_agree(0.6666, votes, total_weight):
         # 66.6% or higher
-        log.info("Voted MALICIOUS because of majority voters (%s/%s)", votes,
-                 total_weight)
+        log.debug("Voted MALICIOUS because of majority voters (%s/%s)", votes,
+                  total_weight)
         return VERDICT_MALICIOUS
 
     if pct_agree(0.6666, total_weight - votes, total_weight):
         # 33.3% or lower
-        log.info("Voted SAFE because of majority voters (%s/%s)", votes,
-                 total_weight)
+        log.debug("Voted SAFE because of majority voters (%s/%s)", votes,
+                  total_weight)
         return VERDICT_SAFE
 
-    log.info("Voted DONTKNOW because of voters didn't agree (%s/%s)", votes,
-             total_weight)
+    log.debug("Voted DONTKNOW because of voters didn't agree (%s/%s)", votes,
+              total_weight)
     return VERDICT_DONTKNOW
 
 class VerdictComponent(Component):
