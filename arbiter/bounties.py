@@ -85,12 +85,21 @@ class BountyComponent(Component):
     @periodic(seconds=5)
     def advance_vote_bounty(self):
         block_number = self.cur_block
-        MAX_OUTSTANDING_VOTES = 32
+        MAX_OUTSTANDING_VOTES = 64
         pending = len(self.is_voting)
         if pending >= MAX_OUTSTANDING_VOTES:
             return
         events = []
         s = DbSession()
+        bounties = s.query(DbBounty).filter_by(status="active") \
+            .filter(DbBounty.voted.is_(False)) \
+            .filter((block_number - 60) >= DbBounty.vote_before) \
+            .filter(DbBounty.truth_value.isnot(None)) \
+            .with_for_update()
+        for b in bounties:
+            log.warning("%s | %s | Expired vote (%s)", b.guid, block_number, b.vote_before)
+            b.voted = True
+            s.add(b)
         bounties = s.query(DbBounty).filter_by(status="active") \
             .filter(DbBounty.voted.is_(False)) \
             .filter(block_number >= DbBounty.vote_after) \
@@ -107,7 +116,7 @@ class BountyComponent(Component):
     @periodic(seconds=5)
     def advance_reveal(self):
         block_number = self.cur_block
-        MAX_OUTSTANDING_REVEALS = 32
+        MAX_OUTSTANDING_REVEALS = 64
         pending = len(self.is_revealing)
         if pending >= MAX_OUTSTANDING_REVEALS:
             return
@@ -128,7 +137,7 @@ class BountyComponent(Component):
     @periodic(seconds=5)
     def advance_settle(self):
         block_number = self.cur_block
-        MAX_OUTSTANDING_SETTLES = 32
+        MAX_OUTSTANDING_SETTLES = 64
         pending = len(self.is_settling)
         if pending >= MAX_OUTSTANDING_SETTLES:
             return

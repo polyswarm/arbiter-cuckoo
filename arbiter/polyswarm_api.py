@@ -40,7 +40,6 @@ class PolySwarmAPI(object):
         self.minimum_stake = minimum_stake
         self.base_nonce = {"side": 0, "home": 0}
         self.base_nonce_lock = Semaphore()
-        self.api_concurrent = Semaphore(8)
         #self.session = requests.Session()
 
     def wait_online(self, tries=30):
@@ -201,8 +200,7 @@ class PolySwarmAPI(object):
             self.base_nonce[chain] += 1  # Bad
 
         reqses = requests.Session()
-        with self.api_concurrent:
-            r = self(method, path, body, params, session=reqses)
+        r = self(method, path, body, params, session=reqses)
 
         signed, transactions = [], r.get("transactions", [])
         if len(transactions) != 1:
