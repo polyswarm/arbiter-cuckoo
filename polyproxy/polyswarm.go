@@ -30,8 +30,8 @@ var hclient = http.Client{
 // Fairly short, and should not be used in production, but chosen to deal with
 // potential remote load balancer issues
 var (
-	PolyswarmTimeoutNonTX = time.Second * 5
-	PolyswarmTimeoutTX    = time.Second * 30
+	PolyswarmTimeoutNonTX = time.Second * 30
+	PolyswarmTimeoutTX    = time.Second * 110
 )
 
 type Polyswarm struct {

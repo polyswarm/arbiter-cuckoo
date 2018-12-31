@@ -74,7 +74,9 @@ func main() {
 	go func() {
 		for {
 			time.Sleep(time.Second * 30)
-			h.SyncNonce()
+			if err := h.SyncNonce(); err != nil {
+				log.Println("Could not sync nonce:", err)
+			}
 		}
 	}()
 	s := &http.Server{
@@ -88,16 +90,20 @@ func (h *handler) SyncNonce() error {
 	h.Lock()
 	defer h.Unlock()
 	home, err := h.ps.Nonce("home")
-	if err == nil && home > h.HomeNonce {
-		log.Println("Synced home nonce:", home)
-		h.HomeNonce = home
+	if err == nil {
+		if home > h.HomeNonce {
+			log.Println("Synced home nonce:", home)
+			h.HomeNonce = home
+		}
 	} else {
 		return err
 	}
 	side, err := h.ps.Nonce("side")
-	if err == nil && side > h.SideNonce {
-		log.Println("Synced side nonce:", side)
-		h.SideNonce = side
+	if err == nil {
+		if side > h.SideNonce {
+			log.Println("Synced side nonce:", side)
+			h.SideNonce = side
+		}
 	} else {
 		return err
 	}
@@ -145,7 +151,6 @@ func (h *handler) handle(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	u := r.URL.Path + "?" + params.Encode()
-	log.Println(sign, r.Method, u, r.ContentLength)
 	preq := h.ps.Request(r.Method, u).Timeout(PolyswarmTimeoutNonTX)
 	// Proxy body, if it exists
 	if r.ContentLength != 0 {
@@ -162,7 +167,9 @@ func (h *handler) handle(w http.ResponseWriter, r *http.Request) error {
 	if sign > 0 {
 		proxy = nil
 	}
+	s := time.Now()
 	pr, err := preq.Raw(proxy)
+	log.Println(sign, r.Method, u, r.ContentLength, time.Since(s))
 	if err != nil {
 		log.Println("API error:", err)
 		return err
@@ -193,10 +200,12 @@ func (h *handler) handle(w http.ResponseWriter, r *http.Request) error {
 		Transactions []string `json:"transactions"`
 	}{signed}
 
+	s = time.Now()
 	pr, err = h.ps.Request(
 		"POST",
 		fmt.Sprintf("/transactions?account=%v&chain=%v", h.ps.Account, chain),
 	).Timeout(PolyswarmTimeoutTX).JSON(req).Raw(w)
+	log.Println(sign, r.Method, u, r.ContentLength, "SIGN", time.Since(s))
 
 	if pr.statusCode > 0 && len(pr.raw) > 0 {
 		if pr.statusCode != 200 {
