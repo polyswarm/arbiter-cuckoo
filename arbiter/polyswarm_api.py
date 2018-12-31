@@ -7,9 +7,47 @@ import six
 import time
 
 from gevent.lock import Semaphore
+from gevent.subprocess import Popen, PIPE
 from web3.auto import w3 as web3
+from urllib.parse import quote
+from json import dumps, loads, JSONDecodeError
 
 log = logging.getLogger(__name__)
+
+def _quote(v):
+    if isinstance(v, bytes):
+        v = v.encode("utf8")
+    elif not isinstance(v, str):
+        v = "%s" % v
+    return quote(v)
+
+def request_with_curl(method, url, params, headers, json):
+    if params:
+        url += "?" + "&".join("%s=%s" % (k, _quote(v)) for k, v in params.items())
+    cmd = ["curl", "-s", "--connect-timeout", "3",
+           "--max-time", "30", "-X", method, url]
+    for kv in headers.items():
+        cmd.extend(["-H", "%s: %s" % kv])
+    if json:
+        cmd.extend(["-H", "Content-Type: application/json; charset=utf8"])
+        cmd.extend(["--data-raw", dumps(json)])
+    #print(" ".join(('"' + c + '"') if ' ' in c else c for c in cmd))
+    print(">>", cmd)
+    p = Popen(cmd, stdout=PIPE)
+    buf = b""
+    while True:
+        tmp = p.stdout.read(4096)
+        if tmp == b"":
+            break
+        buf += tmp
+    p.wait()
+    print("<<", buf)
+    if buf == b"":
+        return {"errors": "no data returned (timeout?)", "status":"FAIL"}
+    try:
+        return loads(buf.decode("utf8"))
+    except JSONDecodeError:
+        return {"errors": str(buf), "status":"FAIL"}
 
 class PolySwarmError(Exception):
     def __init__(self, status, message, reason=""):
@@ -23,24 +61,37 @@ class PolySwarmError(Exception):
 class PolySwarmNotFound(PolySwarmError):
     pass
 
+class DummyLock:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, typ, value, traceback):
+        pass
+
 class PolySwarmAPI(object):
-    def __init__(self, host, apikey, account, account_privkey,
-                 minimum_stake, chain):
-        self.host = host
-        self.apikey = apikey
-        self.account_privkey = account_privkey
-        a = web3.eth.account.privateKeyToAccount(account_privkey)
+    def __init__(self, config):
+        #host, apikey, account, account_privkey,
+        #         minimum_stake, chain):
+        self.polyproxy = config.polyproxy
+        self.host = config.polyswarmd
+        self.apikey = config.apikey
+        self.chain = config.chain
+        self.minimum_stake = config.minimum_stake
+        self.account_privkey = config.addr_privkey
+
+        a = web3.eth.account.privateKeyToAccount(config.addr_privkey)
         self.account = a.address
-        if account:
-            if self.account != account:
-                log.warn("Oops, you didn't configure the correct public key!")
-                raise ValueError((self.account, account))
+        if config.addr and self.account != config.addr:
+            log.warn("Oops, you didn't configure the correct public key!")
+            raise ValueError((self.account, config.addr))
         log.info("Public key: %s", self.account)
-        self.chain = chain
-        self.minimum_stake = minimum_stake
         self.base_nonce = {"side": 0, "home": 0}
         self.base_nonce_lock = Semaphore()
-        #self.session = requests.Session()
+
+        if self.polyproxy:
+            self.lock = DummyLock()
+        else:
+            self.lock = Semaphore(64)
 
     def wait_online(self, tries=30):
         for _ in range(tries):
@@ -154,10 +205,7 @@ class PolySwarmAPI(object):
         )
 
     def __call__(self, method, path, body=None, params=None, session=None):
-        if not session:
-            session = requests.Session()
-        func = getattr(session, method)
-        #func = getattr(self.session, method)
+        func = getattr(requests, method)
         headers = {"Authorization": "Bearer %s" % self.apikey}
         params = params or {}
         params["account"] = self.account
@@ -166,12 +214,20 @@ class PolySwarmAPI(object):
         #log.debug("polyswarm: //%s/%s?%s", self.host, path, _params)
         #if body: log.debug("Payload: %r", body)
 
+        addr = "https://%s/%s" % (self.host, path)
+        kwargs = {"timeout": (10, 30)}
+        if self.polyproxy:
+            addr = "http://%s/%s" % (self.polyproxy, path)
+            kwargs = {}
+
         resp = func(
-            "https://%s/%s" % (self.host, path), json=body,
-            params=params, headers=headers, timeout=(10, 300)
+            addr, json=body,
+            params=params, headers=headers,
+            **kwargs
         )
 
-        if resp.status_code == 404:
+        status_code = resp.status_code
+        if status_code == 404:
             raise PolySwarmNotFound(resp.status_code, resp.reason)
         try:
             r = resp.json()
@@ -181,17 +237,21 @@ class PolySwarmAPI(object):
             raise PolySwarmError(resp.status_code, resp.reason)
 
         if r.get("status") != "OK":
-            msg = "%s: %s" % (r.get("status"), r.get("errors"))
-            raise PolySwarmError(resp.status_code, msg)
+            #msg = "%s: %s" % (r.get("status"), r.get("errors"))
+            msg = str(r)
+            raise PolySwarmError(status_code, msg)
 
-        elif resp.status_code < 200 or resp.status_code > 299:
+        elif status_code < 200 or status_code > 299:
             # Error, but not explicit status?
-            log.error("Status: %s Text: %s", resp.status_code, resp.text)
-            raise PolySwarmError(resp.status_code, resp.reason)
+            #log.error("Status: %s Text: %s", status_code, resp.text)
+            raise PolySwarmError(status_code, "Bad status")
 
         return r.get("result")
 
     def req_and_sign(self, method, path, body=None, params=None):
+        if self.polyproxy:
+            return self(method, path, body, params)
+
         chain = self.chain
         chain = params.get("chain", chain)
         params = params or {}
@@ -199,8 +259,7 @@ class PolySwarmAPI(object):
             params["base_nonce"] = self.base_nonce[chain]
             self.base_nonce[chain] += 1  # Bad
 
-        reqses = requests.Session()
-        r = self(method, path, body, params, session=reqses)
+        r = self(method, path, body, params)
 
         signed, transactions = [], r.get("transactions", [])
         if len(transactions) != 1:
@@ -220,8 +279,7 @@ class PolySwarmAPI(object):
         r = self(
             "post", "transactions",
             {"transactions": signed},
-            {"chain": chain},
-            session=reqses
+            {"chain": chain}
         )
         if not r:
             log.error("Potential transaction error")

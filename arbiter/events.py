@@ -67,6 +67,11 @@ class Events(Component):
             log.info("Connecting to %s", self.uri)
             try:
                 ws.connect()
+                ws.sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+                ws.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 30)
+                ws.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 10)
+                ws.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 3)
+
                 log.debug("Connected")
                 self.pending_bounties()
                 while True:

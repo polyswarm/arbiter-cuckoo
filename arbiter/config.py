@@ -27,6 +27,7 @@ class ConfigFile(object):
     defaults = {
         "bind": ":9080",
         "url": "http://localhost:9080",
+        "polyproxy": "",
         "polyswarmd": "polyswarmd.polyswarm.io",
         "apikey": "a"*32,
         "addr": "",

@@ -40,6 +40,7 @@ class DbBounty(Base):
 
     # Delay until block (retry on PolySwarm errors)
     error_delay_block = Column(Integer, nullable=False, default=0)
+    error_retries = Column(Integer, nullable=False, default=0)
 
     # Expiration block for assertions
     expiration_block = Column(Integer, nullable=False)

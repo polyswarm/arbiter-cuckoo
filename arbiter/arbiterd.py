@@ -38,11 +38,7 @@ class Arbiterd(object):
         self.artifact_interval = 600
 
         self.config = config
-        self.polyswarm = PolySwarmAPI(
-            config.polyswarmd, config.apikey, config.addr,
-            config.addr_privkey, config.minimum_stake, config.chain
-        )
-
+        self.polyswarm = PolySwarmAPI(config)
         self.manual_mode = manual_mode
 
         # For dashboard

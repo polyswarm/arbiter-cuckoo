@@ -21,6 +21,10 @@ log = logging.getLogger(__name__)
 ARBITER_VOTE_WINDOW = 25
 ASSERTION_REVEAL_WINDOW = 25
 
+MAX_OUTSTANDING_VOTES = 128
+MAX_OUTSTANDING_REVEALS = 64
+MAX_OUTSTANDING_SETTLES = 128
+
 def bounty_settle_manual(guid, votes):
     s = DbSession()
     bounty = s.query(DbBounty).with_for_update().filter_by(guid=guid).first()
@@ -85,7 +89,6 @@ class BountyComponent(Component):
     @periodic(seconds=5)
     def advance_vote_bounty(self):
         block_number = self.cur_block
-        MAX_OUTSTANDING_VOTES = 64
         pending = len(self.is_voting)
         if pending >= MAX_OUTSTANDING_VOTES:
             return
@@ -116,7 +119,6 @@ class BountyComponent(Component):
     @periodic(seconds=5)
     def advance_reveal(self):
         block_number = self.cur_block
-        MAX_OUTSTANDING_REVEALS = 64
         pending = len(self.is_revealing)
         if pending >= MAX_OUTSTANDING_REVEALS:
             return
@@ -137,7 +139,6 @@ class BountyComponent(Component):
     @periodic(seconds=5)
     def advance_settle(self):
         block_number = self.cur_block
-        MAX_OUTSTANDING_SETTLES = 64
         pending = len(self.is_settling)
         if pending >= MAX_OUTSTANDING_SETTLES:
             return
@@ -226,6 +227,10 @@ class BountyComponent(Component):
             if soft_fail:
                 # TODO: WS event
                 bounty.error_delay_block = self.cur_block + 5
+                bounty.error_retries += 1
+                if bounty.error_retries >= 3:
+                    bounty.status = "aborted"
+                    log.error("%s | %s | Aborted while voting, too many failures", guid, self.cur_block)
             s.add(bounty)
         else:
             log.warning("%s | %s | WARNING: double vote", guid, self.cur_block)
@@ -249,10 +254,10 @@ class BountyComponent(Component):
         except PolySwarmNotFound:
             pass
         except PolySwarmError as e:
-            log.exception("%s | Assertion fetch error: %s", guid, e)
-        except:
+            log.error("%s | Assertion fetch error: %s", guid, e)
+        except Exception as e:
             # We ignore this for now
-            log.exception("Failed to check assertions")
+            log.error("Failed to check assertions: %s", e)
 
         if assertions:
             log.debug("%s | %s assertion(s)", guid, len(assertions))
@@ -313,6 +318,10 @@ class BountyComponent(Component):
         if bounty and not bounty.settled:
             if failed and soft_fail:
                 bounty.error_delay_block = self.cur_block + 5
+                bounty.error_retries += 1
+                if bounty.error_retries >= 3:
+                    bounty.status = "aborted"
+                    log.error("%s | %s | Aborted while settling, too many failures", guid, self.cur_block)
             else:
                 if failed:
                     bounty.status = "aborted"
