@@ -145,24 +145,32 @@ func (h *handler) handle(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	u := r.URL.Path + "?" + params.Encode()
-	log.Println(sign, u)
-	pr, err := h.ps.Request(r.Method, u).Timeout(PolyswarmTimeoutNonTX).Raw()
-	if err != nil {
-		if pr.statusCode > 0 && len(pr.Errors) > 0 {
-			log.Println("API error:", pr.Error())
-			// Have a valid API response, proxy it
-			w.WriteHeader(pr.statusCode)
-			w.Write(pr.raw)
-			return nil
+	log.Println(sign, r.Method, u, r.ContentLength)
+	preq := h.ps.Request(r.Method, u).Timeout(PolyswarmTimeoutNonTX)
+	// Proxy body, if it exists
+	if r.ContentLength != 0 {
+		ct := r.Header.Get("Content-Type")
+		if ct == "" {
+			ct = "application/json; charset=utf8"
 		}
-		log.Println("Internal API error:", err)
+		preq.req.Header.Set("Content-Type", ct)
+		preq.req.Body = r.Body
+		preq.req.ContentLength = r.ContentLength
+	}
+	// Directly proxy if not a signing request
+	proxy := w
+	if sign > 0 {
+		proxy = nil
+	}
+	pr, err := preq.Raw(proxy)
+	if err != nil {
+		log.Println("API error:", err)
 		return err
 	}
-
+	if pr.statusCode != 200 || len(pr.Errors) > 0 {
+		log.Println("Errors:", pr.statusCode, nows(string(pr.raw)))
+	}
 	if sign == 0 {
-		// Non-TX, proxy response
-		w.WriteHeader(pr.statusCode)
-		w.Write(pr.raw)
 		return nil
 	}
 
@@ -174,14 +182,11 @@ func (h *handler) handle(w http.ResponseWriter, r *http.Request) error {
 		pr.decodeErr = err
 		return pr
 	}
-	log.Printf("Transactions: %+v", resp.Transactions)
 
 	signed, err := h.bc.SignTransactions(resp.Transactions)
 	if err != nil {
 		return pr
 	}
-
-	log.Printf("Signed: %v", signed)
 
 	// Send transaction
 	req := struct {
@@ -191,11 +196,12 @@ func (h *handler) handle(w http.ResponseWriter, r *http.Request) error {
 	pr, err = h.ps.Request(
 		"POST",
 		fmt.Sprintf("/transactions?account=%v&chain=%v", h.ps.Account, chain),
-	).Timeout(PolyswarmTimeoutTX).JSON(req).Raw()
+	).Timeout(PolyswarmTimeoutTX).JSON(req).Raw(w)
+
 	if pr.statusCode > 0 && len(pr.raw) > 0 {
-		w.WriteHeader(pr.statusCode)
-		w.Write(pr.raw)
-		return nil
+		if pr.statusCode != 200 {
+			log.Println("Transaction status:", nows(string(pr.raw)))
+		}
 	}
 	return err
 }
@@ -213,4 +219,8 @@ func unmarshal(fn string, v interface{}) error {
 		return err
 	}
 	return yaml.Unmarshal(b, v)
+}
+
+func nows(s string) string {
+	return strings.Trim(s, " \t\r\n")
 }

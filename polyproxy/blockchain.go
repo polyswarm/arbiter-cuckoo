@@ -12,7 +12,7 @@ import (
 )
 
 type Transaction struct {
-	ChainID  int      `json:"chainId"`
+	ChainID  *big.Int `json:"chainId"`
 	Data     string   `json:"data"`
 	GasLimit uint64   `json:"gas"`
 	GasPrice *big.Int `json:"gasPrice"`
@@ -40,16 +40,13 @@ func (b *Blockchain) Pubkey() string {
 }
 
 func (b *Blockchain) SignTransactions(txs []Transaction) ([]string, error) {
-	var signed []string
+	signed := []string{}
 	for _, tx := range txs {
 		data, err := hex.DecodeString(noex(tx.Data))
 		if err != nil {
 			return nil, err
 		}
-		chainid := new(big.Int)
-		chainid.SetInt64(int64(tx.ChainID))
-		s := types.NewEIP155Signer(chainid)
-
+		s := types.NewEIP155Signer(tx.ChainID)
 		t, err := types.SignTx(types.NewTransaction(
 			tx.Nonce,
 			common.HexToAddress(tx.To),

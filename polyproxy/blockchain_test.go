@@ -9,7 +9,7 @@ import (
 func TestSign(t *testing.T) {
 	privkey := os.Getenv("PRIVKEY")
 	rawtx := []byte(`{"chainId": 1338,"data":"0x5592d6870000000000000000000000000000000031880eb58681425a93a6c777d15b636e","gas":5000000,` +
-		`"gasPrice":0,"value":0,"to":"0x2048eDA0128dFE81332aeA4e877d3b3E61D898E9"}`)
+		`"gasPrice":0,"value":0,"to":"0x2048eDA0128dFE81332aeA4e877d3b3E61D898E9","nonce":16462}`)
 
 	var tx Transaction
 	json.Unmarshal(rawtx, &tx)

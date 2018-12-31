@@ -10,14 +10,25 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"golang.org/x/sync/semaphore"
 )
 
+var hclient = http.Client{
+	Transport: &http.Transport{
+		DisableKeepAlives: true,
+	},
+}
+
+// Fairly short, and should not be used in production, but chosen to deal with
+// potential remote load balancer issues
 var (
 	PolyswarmTimeoutNonTX = time.Second * 5
 	PolyswarmTimeoutTX    = time.Second * 30
@@ -74,6 +85,7 @@ func (ps *Polyswarm) Nonce(chain string) (uint64, error) {
 }
 
 type Request struct {
+	ps     *Polyswarm
 	err    error
 	req    *http.Request
 	resp   *http.Response
@@ -85,7 +97,7 @@ func (ps *Polyswarm) Request(method, path string) *Request {
 	if req != nil && ps.BearerAuth != "" {
 		req.Header.Set("Authorization", "Bearer "+ps.BearerAuth)
 	}
-	return &Request{err, req, nil, nil}
+	return &Request{ps, err, req, nil, nil}
 }
 
 func (r *Request) Timeout(t time.Duration) *Request {
@@ -136,37 +148,58 @@ func (r *Request) Do() error {
 	return r.Read(nil)
 }
 
-func (r *Request) Raw() (PolyResp, error) {
+func (r *Request) Err() error {
+	return r.err
+}
+
+// Can return an error if nothing was proxied
+func (r *Request) Raw(w http.ResponseWriter) (PolyResp, error) {
+	r.ps.Limit.Acquire(context.TODO(), 1)
+	defer r.ps.Limit.Release(1)
 	defer r.Close()
 	var pr PolyResp
 	if r.err != nil {
 		return pr, r.err
 	}
-	resp, err := http.DefaultClient.Do(r.req) // TODO: client?
+	resp, err := hclient.Do(r.req)
 	if err != nil {
 		r.err = err
 		return pr, r.err
 	}
 	r.resp = resp
-	pr.statusCode = resp.StatusCode
-	body, _ := ioutil.ReadAll(resp.Body)
-	pr.raw = body
-	if err := json.Unmarshal(body, &pr); err == nil {
-		// Valid JSON body
-		if resp.StatusCode < 200 || resp.StatusCode > 299 {
-			r.err = pr
-			return pr, r.err
-		}
-	} else {
-		pr.decodeErr = err
-		r.err = pr
-		return pr, r.err
+
+	ct := resp.Header.Get("Content-Type")
+	if w != nil {
+		w.Header().Set("Content-Type", ct)
+		w.WriteHeader(resp.StatusCode)
 	}
-	return pr, r.err
+
+	pr.statusCode = resp.StatusCode
+	if strings.HasPrefix(ct, "application/json") {
+		// Copy JSON body so we can inspect it
+
+		// TODO: max resp. length
+		var our io.Reader
+		if w == nil {
+			our = resp.Body
+		} else {
+			our = io.TeeReader(resp.Body, w)
+		}
+		body, _ := ioutil.ReadAll(our)
+		pr.raw = body
+		pr.decodeErr = json.Unmarshal(body, &pr)
+	} else {
+		log.Println("Non-JSON:", ct)
+		if w != nil {
+			_, r.err = io.Copy(w, resp.Body)
+		}
+	}
+
+	return pr, nil
 }
 
 func (r *Request) Read(v interface{}) error {
-	pr, err := r.Raw()
+	pr, err := r.Raw(nil)
 	if err != nil {
 		return err
 	}
