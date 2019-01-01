@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -16,6 +15,7 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+const NONCE_SYNC_INTERVAL = time.Second * 20
 const MAX_NONCE_ROLLBACKS = 3
 
 type Config struct {
@@ -62,16 +62,21 @@ func mustSign(path string) uint64 {
 
 func (c *Chain) SyncNonce(n uint64) {
 	if n > c.Nonce {
-		log.Println("Forward", c.Name, "nonce:", n)
+		log.Println("ERROR: Forward", c.Name, "nonce:", n)
 		c.Nonce = n
+		c.NonceRollbackCount = 0
 	} else if n != c.Nonce && c.MinedNonce == n {
-		log.Println("No mining progress on", c.Name, "; nonce:", n)
 		c.NonceRollbackCount++
-		if c.NonceRollbackCount > MAX_NONCE_ROLLBACKS {
-			log.Println("Rollback", c.Name, "; nonce:", n)
+		if c.NonceRollbackCount > 1 {
+			log.Println("ERROR: No mining progress on", c.Name, " nonce:", n, "internal:", c.Nonce)
+		}
+		if c.NonceRollbackCount >= MAX_NONCE_ROLLBACKS {
+			log.Println("ERROR: Rollback", c.Name, "; nonce:", n)
 			c.Nonce = n
 			c.NonceRollbackCount = 0
 		}
+	} else {
+		c.NonceRollbackCount = 0
 	}
 	c.MinedNonce = n
 }
@@ -96,13 +101,13 @@ func main() {
 	h.Home.Name = "home"
 	h.Side.Name = "side"
 	if err := h.SyncNonce(); err != nil {
-		log.Fatalln("Could not sync nonce:", err)
+		log.Fatalln("ERROR: Could not sync nonce:", err)
 	}
 	go func() {
 		for {
-			time.Sleep(time.Second * 30)
+			time.Sleep(NONCE_SYNC_INTERVAL)
 			if err := h.SyncNonce(); err != nil {
-				log.Println("Could not sync nonce:", err)
+				log.Println("ERROR: Could not sync nonce:", err)
 			}
 		}
 	}()
@@ -146,11 +151,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (h *handler) handle(w http.ResponseWriter, r *http.Request) error {
 	sign := mustSign(r.URL.Path)
-
-	params, err := url.ParseQuery(r.URL.RawQuery)
-	if err != nil {
-		return err
-	}
+	params := r.URL.Query()
 
 	if params.Get("account") == "" {
 		params.Set("account", h.ps.Account)
@@ -192,11 +193,10 @@ func (h *handler) handle(w http.ResponseWriter, r *http.Request) error {
 	pr, err := preq.Raw(proxy)
 	log.Println(sign, r.Method, u, r.ContentLength, time.Since(s))
 	if err != nil {
-		log.Println("API error:", err)
 		return err
 	}
 	if pr.statusCode != 200 || len(pr.Errors) > 0 {
-		log.Println("Errors:", pr.statusCode, nows(string(pr.raw)))
+		log.Println("ERROR:", pr.statusCode, nows(string(pr.raw)))
 	}
 	if sign == 0 {
 		return nil
@@ -213,7 +213,7 @@ func (h *handler) handle(w http.ResponseWriter, r *http.Request) error {
 
 	signed, err := h.bc.SignTransactions(resp.Transactions)
 	if err != nil {
-		return pr
+		return err
 	}
 
 	// Send transaction
@@ -230,7 +230,7 @@ func (h *handler) handle(w http.ResponseWriter, r *http.Request) error {
 
 	if pr.statusCode > 0 && len(pr.raw) > 0 {
 		if pr.statusCode != 200 {
-			log.Println("Transaction status:", nows(string(pr.raw)))
+			log.Println("ERROR: Transaction status:", nows(string(pr.raw)))
 		}
 	}
 	return err
