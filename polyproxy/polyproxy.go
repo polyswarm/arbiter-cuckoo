@@ -16,18 +16,27 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+const MAX_NONCE_ROLLBACKS = 3
+
 type Config struct {
 	PolyHost string `yaml:"polyswarmd"`
 	PolyAuth string `yaml:"apikey"`
 	Privkey  string `yaml:"addr_privkey"`
 }
 
+type Chain struct {
+	Name               string
+	Nonce              uint64
+	MinedNonce         uint64
+	NonceRollbackCount uint64
+}
+
 type handler struct {
 	sync.Mutex
-	HomeNonce uint64
-	SideNonce uint64
-	ps        *Polyswarm
-	bc        *Blockchain
+	Home Chain
+	Side Chain
+	ps   *Polyswarm
+	bc   *Blockchain
 }
 
 // Errors we send
@@ -51,6 +60,22 @@ func mustSign(path string) uint64 {
 	return 0
 }
 
+func (c *Chain) SyncNonce(n uint64) {
+	if n > c.Nonce {
+		log.Println("Forward", c.Name, "nonce:", n)
+		c.Nonce = n
+	} else if n != c.Nonce && c.MinedNonce == n {
+		log.Println("No mining progress on", c.Name, "; nonce:", n)
+		c.NonceRollbackCount++
+		if c.NonceRollbackCount > MAX_NONCE_ROLLBACKS {
+			log.Println("Rollback", c.Name, "; nonce:", n)
+			c.Nonce = n
+			c.NonceRollbackCount = 0
+		}
+	}
+	c.MinedNonce = n
+}
+
 func main() {
 	cfg := loadConfig()
 	bc, _ := NewBlockchain(cfg.Privkey)
@@ -68,6 +93,8 @@ func main() {
 		ps: ps,
 		bc: bc,
 	}
+	h.Home.Name = "home"
+	h.Side.Name = "home"
 	if err := h.SyncNonce(); err != nil {
 		log.Fatalln("Could not sync nonce:", err)
 	}
@@ -91,19 +118,13 @@ func (h *handler) SyncNonce() error {
 	defer h.Unlock()
 	home, err := h.ps.Nonce("home")
 	if err == nil {
-		if home > h.HomeNonce {
-			log.Println("Synced home nonce:", home)
-			h.HomeNonce = home
-		}
+		h.Home.SyncNonce(home)
 	} else {
 		return err
 	}
 	side, err := h.ps.Nonce("side")
 	if err == nil {
-		if side > h.SideNonce {
-			log.Println("Synced side nonce:", side)
-			h.SideNonce = side
-		}
+		h.Side.SyncNonce(side)
 	} else {
 		return err
 	}
@@ -141,11 +162,11 @@ func (h *handler) handle(w http.ResponseWriter, r *http.Request) error {
 		}
 		h.Lock()
 		if chain == "side" {
-			params.Set("base_nonce", fmt.Sprintf("%v", h.SideNonce))
-			h.SideNonce += sign
+			params.Set("base_nonce", fmt.Sprintf("%v", h.Side.Nonce))
+			h.Side.Nonce += sign
 		} else {
-			params.Set("base_nonce", fmt.Sprintf("%v", h.HomeNonce))
-			h.HomeNonce += sign
+			params.Set("base_nonce", fmt.Sprintf("%v", h.Home.Nonce))
+			h.Home.Nonce += sign
 		}
 		h.Unlock()
 	}
