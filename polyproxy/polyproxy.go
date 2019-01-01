@@ -94,7 +94,7 @@ func main() {
 		bc: bc,
 	}
 	h.Home.Name = "home"
-	h.Side.Name = "home"
+	h.Side.Name = "side"
 	if err := h.SyncNonce(); err != nil {
 		log.Fatalln("Could not sync nonce:", err)
 	}
